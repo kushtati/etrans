@@ -1,0 +1,29 @@
+# Backend files (not needed for frontend deployment)
+server/
+prisma/migrations/
+logs/
+
+# Environment files
+.env*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build outputs (will be rebuilt)
+dist/server/
+
+# Tests
+tests/
+*.test.ts
+*.test.tsx
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.vscode/
+.idea/
+*.log

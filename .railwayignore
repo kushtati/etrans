@@ -1,0 +1,33 @@
+# Frontend build (not needed for backend)
+dist/
+public/
+src/
+index.html
+*.html
+
+# Frontend configs
+vite.config.ts
+vitest.config.ts
+tailwind.config.js
+postcss.config.js
+
+# Documentation
+docs/
+*.md
+!README.md
+!DEPLOYMENT_GUIDE_PROD.md
+
+# Tests
+tests/
+*.test.ts
+*.test.tsx
+
+# Development files
+.vscode/
+.idea/
+*.log
+
+# Already in .gitignore but explicit for Railway
+node_modules/
+.env*
+!.env.example
