@@ -1,0 +1,50 @@
+========================================
+   IDENTIFIANTS DE CONNEXION
+========================================
+
+COMPTE ADMIN (Directeur General)
+---------------------------------
+Email    : admin@transit.gn
+Password : AdminSecure123!
+Role     : DIRECTOR (Acces complet)
+
+
+COMPTE COMPTABLE
+---------------------------------
+Email    : comptable@transit.gn
+Password : Comptable123!
+Role     : ACCOUNTANT
+
+
+COMPTE AGENT
+---------------------------------
+Email    : agent@transit.gn
+Password : Agent123!
+Role     : AGENT
+
+
+COMPTE CLIENT TEST
+---------------------------------
+Email    : client@example.com
+Password : Client123!
+Role     : CLIENT
+
+
+========================================
+   CONNEXION
+========================================
+
+1. Ouvrir: http://localhost:5173
+2. Utiliser un des identifiants ci-dessus
+3. Cliquer sur "Connexion"
+
+
+========================================
+   IMPORTANT
+========================================
+
+Ces identifiants sont pour DEVELOPPEMENT
+NE PAS utiliser en production!
+
+
+Pour plus d'infos: voir IDENTIFIANTS.md

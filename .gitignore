@@ -1,0 +1,104 @@
+# ============================================
+# 📝 LOGS
+# ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================
+# 📦 DEPENDENCIES
+# ============================================
+node_modules/
+.pnp
+.pnp.js
+
+# ============================================
+# 🏗️ BUILD ARTIFACTS
+# ============================================
+dist/
+dist-ssr/
+build/
+out/
+.next/
+*.local
+
+# ============================================
+# 🔒 SECRETS & ENVIRONMENT (clés API, passwords)
+# ============================================
+.env
+.env.local
+.env.server
+.env.docker
+.env.production
+.env.*.local
+# ✅ Garder template (committé)
+!.env.example
+
+# ============================================
+# 💾 DATABASES & BACKUPS
+# ============================================
+*.sql
+*.dump
+*.backup
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+backup/
+backups/
+
+# ============================================
+# ⚡ CACHE & TEMP FILES
+# ============================================
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+.vite/
+.temp/
+tmp/
+
+# ============================================
+# 🧪 TESTS & COVERAGE
+# ============================================
+coverage/
+.nyc_output/
+*.lcov
+
+# ============================================
+# 🐳 DOCKER (local overrides uniquement)
+# ============================================
+docker-compose.override.yml
+
+# ============================================
+# 🖥️ EDITOR & IDE
+# ============================================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# ============================================
+# 🖼️ OS FILES
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.Trash-*
+.Spotlight-V100
+.Trashes

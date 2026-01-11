@@ -1,0 +1,107 @@
+# ============================================
+# 🐳 DOCKER IGNORE - TransitGuinée
+# ============================================
+# Exclut fichiers inutiles des images Docker
+# Réduit taille build context et accélère docker build
+# ============================================
+
+# 📝 Documentation
+*.md
+!README.md
+docs/
+CORRECTIONS_APPLIED.md
+SECURITY_FIXES.md
+TODO.md
+QUICK_START.md
+
+# 🔐 Secrets et Configuration
+.env*
+!.env.example
+.env.local
+.env.*.local
+.env.server
+.env.docker
+.env.development
+.env.production
+
+# 📦 Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 🏗️ Build artifacts
+dist/
+dist-ssr/
+build/
+.next/
+out/
+
+# 🧪 Tests
+tests/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage/
+.nyc_output/
+vitest.config.ts
+
+# 🔨 Development tools
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 📊 Logs
+logs/
+*.log
+npm-debug.log*
+lerna-debug.log*
+
+# 🐳 Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# 🔄 Git
+.git/
+.gitignore
+.gitattributes
+
+# 🚀 Deployment configs
+netlify.toml
+vercel.json
+deployment/
+
+# 📱 PWA development
+public/service-worker.js.map
+
+# 🎨 Source maps (dev only)
+*.map
+
+# 📸 Screenshots et assets non essentiels
+screenshots/
+docs/images/
+
+# 🛠️ Scripts utilitaires
+scripts/
+generate-icons.js
+security-audit.cjs
+find-inline-permissions.js
+
+# ⚡ Cache
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+tsconfig.tsbuildinfo
+
+# 🧹 Temporary files
+tmp/
+temp/
+*.tmp

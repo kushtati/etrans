@@ -1,0 +1,317 @@
+      {/* MODAL: Sortie Port - Ultra-détaillé avec infos de livraison */}
+      {showSortiePortModal && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full max-h-[90vh] flex flex-col animate-slideUp">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-emerald-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Dossiers Prêts pour Sortie Port</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">BAE Obtenu & Sortie Port • Suivi Livraison Complet</p>
+                </div>
+                <span className="ml-4 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">
+                  {filteredSortiePort.length} dossier{filteredSortiePort.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <button 
+                onClick={() => setShowSortiePortModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-slate-400" />
+              </button>
+            </div>
+
+            {/* Toolbar */}
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-3 items-center">
+              {/* Search */}
+              <div className="flex-1 min-w-[200px] relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher (N°, client, BL, destination, chauffeur, destinataire...)"
+                  value={searchTermSortiePort}
+                  onChange={(e) => setSearchTermSortiePort(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              {/* Filter */}
+              <select
+                value={filterStatusSortiePort}
+                onChange={(e) => setFilterStatusSortiePort(e.target.value as ShipmentStatus | 'ALL')}
+                className="px-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+              >
+                <option value="ALL">Tous les statuts</option>
+                <option value={ShipmentStatus.BAE_GRANTED}>BAE Obtenu</option>
+                <option value={ShipmentStatus.PORT_EXIT}>Sortie Port</option>
+              </select>
+
+              {/* Sort */}
+              <select
+                value={sortBySortiePort}
+                onChange={(e) => setSortBySortiePort(e.target.value as 'date' | 'client' | 'status')}
+                className="px-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+              >
+                <option value="date">Trier par date</option>
+                <option value="client">Trier par client</option>
+                <option value="status">Trier par statut</option>
+              </select>
+
+              {/* Export CSV */}
+              <button
+                onClick={() => {
+                  if (filteredSortiePort.length === 0) {
+                    alert('Aucun dossier à exporter');
+                    return;
+                  }
+                  const headers = ['N° Tracking', 'Client', 'N° BL', 'Description', 'Statut', "Date d'arrivée", 'Destination', 'Chauffeur', 'Camion', 'Destinataire', 'Date livraison', 'Reçu par client', 'Total facturé', 'Payé', 'Solde', 'Alertes'];
+                  const rows = filteredSortiePort.map(d => {
+                    const totalFacture = (d.expenses || []).filter(e => e.type === 'REVENUE').reduce((sum, e) => sum + e.amount, 0);
+                    const totalPaye = (d.expenses || []).filter(e => e.type === 'REVENUE' && e.paid).reduce((sum, e) => sum + e.amount, 0);
+                    const solde = totalFacture - totalPaye;
+                    const alertes = (d.alerts || []).join('; ');
+                    const destination = d.destination || 'N/A';
+                    const chauffeur = d.deliveryInfo?.driverName || 'Non assigné';
+                    const camion = d.deliveryInfo?.truckPlate || 'N/A';
+                    const destinataire = d.deliveryInfo?.recipientName || 'Non spécifié';
+                    const dateLivraison = d.deliveryInfo?.deliveryDate ? new Date(d.deliveryInfo.deliveryDate).toLocaleDateString('fr-FR') : 'Non planifiée';
+                    const recuParClient = d.status === ShipmentStatus.DELIVERED ? 'Oui' : d.status === ShipmentStatus.PORT_EXIT ? 'En cours' : 'Non';
+                    return [d.trackingNumber, d.clientName, d.blNumber, d.description || '', getStatusLabel(d.status), d.arrivalDate ? new Date(d.arrivalDate).toLocaleDateString('fr-FR') : '', destination, chauffeur, camion, destinataire, dateLivraison, recuParClient, `${totalFacture.toLocaleString('fr-FR')} GNF`, `${totalPaye.toLocaleString('fr-FR')} GNF`, `${solde.toLocaleString('fr-FR')} GNF`, alertes];
+                  });
+                  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `sortie-port-${new Date().toISOString().split('T')[0]}.csv`;
+                  link.click();
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
+              >
+                <Download size={16} />
+                Exporter
+              </button>
+            </div>
+
+            {/* Content - Grid of Cards */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {filteredSortiePort.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 size={32} className="text-slate-400" />
+                  </div>
+                  <p className="text-slate-500 font-medium">Aucun dossier trouvé</p>
+                  <p className="text-slate-400 text-sm mt-1">Ajustez vos filtres de recherche</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredSortiePort.map((dossier, index) => {
+                    const totalFacture = (dossier.expenses || []).filter(e => e.type === 'REVENUE').reduce((sum, e) => sum + e.amount, 0);
+                    const totalPaye = (dossier.expenses || []).filter(e => e.type === 'REVENUE' && e.paid).reduce((sum, e) => sum + e.amount, 0);
+                    const solde = totalFacture - totalPaye;
+                    const trafficLight = getTrafficLight(dossier);
+                    const hasDeliveryInfo = !!dossier.deliveryInfo;
+                    const isDelivered = dossier.status === ShipmentStatus.DELIVERED;
+                    
+                    return (
+                      <div 
+                        key={dossier.id}
+                        className="bg-white border-2 border-slate-200 rounded-xl p-4 hover:shadow-lg transition-all hover:border-emerald-300"
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        {/* Header avec feu tricolore */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${
+                              trafficLight === 'green' ? 'bg-green-500 animate-pulse' :
+                              trafficLight === 'orange' ? 'bg-orange-500 animate-pulse' :
+                              trafficLight === 'red' ? 'bg-red-500 animate-pulse' : 'bg-slate-300'
+                            }`} />
+                            <div>
+                              <h3 className="font-bold text-slate-900 text-sm">{dossier.trackingNumber}</h3>
+                              <p className="text-xs text-slate-500">{dossier.clientName}</p>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                            dossier.status === ShipmentStatus.BAE_GRANTED ? 'bg-blue-100 text-blue-700' :
+                            dossier.status === ShipmentStatus.PORT_EXIT ? 'bg-emerald-100 text-emerald-700' : 
+                            'bg-slate-100 text-slate-600'
+                          }`}>
+                            {getStatusLabel(dossier.status)}
+                          </span>
+                        </div>
+
+                        {/* Infos principales */}
+                        <div className="space-y-2 mb-3 pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2 text-xs">
+                            <FileText size={14} className="text-slate-400" />
+                            <span className="text-slate-600">BL:</span>
+                            <span className="font-medium text-slate-900">{dossier.blNumber}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <Calendar size={14} className="text-slate-400" />
+                            <span className="text-slate-600">Arrivée:</span>
+                            <span className="text-slate-900">{dossier.arrivalDate ? new Date(dossier.arrivalDate).toLocaleDateString('fr-FR') : 'N/A'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <Package size={14} className="text-slate-400" />
+                            <span className="text-slate-600">Conteneur:</span>
+                            <span className="text-slate-900">{dossier.containerNumber || 'N/A'}</span>
+                          </div>
+                          {dossier.description && (
+                            <p className="text-xs text-slate-600 italic line-clamp-2">{dossier.description}</p>
+                          )}
+                        </div>
+
+                        {/* SECTION LIVRAISON - Ultra-détaillée */}
+                        <div className="mb-3 pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Truck size={14} className="text-emerald-600" />
+                            <span className="text-xs font-bold text-slate-700 uppercase">Informations Livraison</span>
+                          </div>
+                          
+                          {/* Destination */}
+                          <div className="flex items-start gap-2 text-xs mb-2">
+                            <MapPin size={14} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <span className="text-slate-500 block">Destination:</span>
+                              <span className="font-medium text-slate-900">{dossier.destination || 'Non spécifiée'}</span>
+                            </div>
+                          </div>
+
+                          {hasDeliveryInfo ? (
+                            <>
+                              {/* Chauffeur */}
+                              <div className="flex items-start gap-2 text-xs mb-2 bg-emerald-50 p-2 rounded">
+                                <User size={14} className="text-emerald-600 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <span className="text-slate-500 block">Chauffeur:</span>
+                                  <span className="font-bold text-emerald-900">{dossier.deliveryInfo.driverName}</span>
+                                </div>
+                              </div>
+
+                              {/* Camion */}
+                              <div className="flex items-start gap-2 text-xs mb-2">
+                                <Truck size={14} className="text-slate-500 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <span className="text-slate-500 block">N° Camion:</span>
+                                  <span className="font-medium text-slate-900">{dossier.deliveryInfo.truckPlate}</span>
+                                </div>
+                              </div>
+
+                              {/* Destinataire */}
+                              <div className="flex items-start gap-2 text-xs mb-2 bg-blue-50 p-2 rounded">
+                                <User size={14} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <span className="text-slate-500 block">Destinataire (Reçu par):</span>
+                                  <span className="font-bold text-blue-900">{dossier.deliveryInfo.recipientName}</span>
+                                </div>
+                              </div>
+
+                              {/* Date de livraison */}
+                              <div className="flex items-start gap-2 text-xs mb-2">
+                                <Calendar size={14} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <span className="text-slate-500 block">Date livraison:</span>
+                                  <span className="font-medium text-slate-900">{new Date(dossier.deliveryInfo.deliveryDate).toLocaleDateString('fr-FR')}</span>
+                                </div>
+                              </div>
+
+                              {/* Statut réception client */}
+                              <div className={`flex items-center gap-2 text-xs p-2 rounded mt-2 ${
+                                isDelivered ? 'bg-green-100' : 'bg-orange-100'
+                              }`}>
+                                <CheckCircle2 size={14} className={isDelivered ? 'text-green-600' : 'text-orange-600'} />
+                                <span className={`font-bold ${
+                                  isDelivered ? 'text-green-900' : 'text-orange-900'
+                                }`}>
+                                  {isDelivered ? '✓ Reçu par le client' : '⏳ En cours de livraison'}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs text-yellow-800 mt-2">
+                              <AlertCircle size={12} className="inline mr-1" />
+                              <span className="font-medium">Informations de livraison non renseignées</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Résumé financier */}
+                        <div className="mb-3">
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <span className="text-slate-500 block mb-1">Total facturé</span>
+                              <span className="font-bold text-slate-900">{totalFacture.toLocaleString('fr-FR')} GNF</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Payé</span>
+                              <span className="font-bold text-green-600">{totalPaye.toLocaleString('fr-FR')} GNF</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Solde</span>
+                              <span className={`font-bold ${solde > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{solde.toLocaleString('fr-FR')} GNF</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Alertes */}
+                        {dossier.alerts && dossier.alerts.length > 0 && (
+                          <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <AlertCircle size={12} className="text-red-600" />
+                              <span className="text-xs font-bold text-red-900">Alertes ({dossier.alerts.length})</span>
+                            </div>
+                            <ul className="text-xs text-red-800 space-y-1">
+                              {dossier.alerts.map((alert, i) => (
+                                <li key={i}>• {alert}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Bouton Voir détails */}
+                        <button
+                          onClick={() => {
+                            setShowSortiePortModal(false);
+                            onViewShipment(dossier.id);
+                          }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 rounded-lg transition-all text-xs font-medium"
+                        >
+                          <Eye size={14} />
+                          Voir détails complets
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer avec statistiques */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold text-slate-900">{filteredSortiePort.length}</div>
+                  <div className="text-xs text-slate-500 uppercase font-medium">Total</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{filteredSortiePort.filter(d => d.status === ShipmentStatus.BAE_GRANTED).length}</div>
+                  <div className="text-xs text-slate-500 uppercase font-medium">BAE Obtenu</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-emerald-600">{filteredSortiePort.filter(d => d.status === ShipmentStatus.PORT_EXIT).length}</div>
+                  <div className="text-xs text-slate-500 uppercase font-medium">Sortie Port</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-green-600">{filteredSortiePort.filter(d => d.deliveryInfo).length}</div>
+                  <div className="text-xs text-slate-500 uppercase font-medium">Infos Livraison</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+

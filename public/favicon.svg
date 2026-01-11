@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Logo TransitGuinée - Design moderne avec conteneur maritime -->
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="256" fill="#0f172a"/>
+  
+  <!-- Container icon (stylisé) -->
+  <g transform="translate(128, 140)">
+    <!-- Container body -->
+    <rect x="20" y="40" width="216" height="160" rx="8" fill="#3b82f6" stroke="#60a5fa" stroke-width="4"/>
+    
+    <!-- Container doors -->
+    <line x1="128" y1="40" x2="128" y2="200" stroke="#1e40af" stroke-width="3"/>
+    <circle cx="100" cy="120" r="8" fill="#dbeafe"/>
+    <circle cx="156" cy="120" r="8" fill="#dbeafe"/>
+    
+    <!-- Container ridges -->
+    <line x1="30" y1="80" x2="226" y2="80" stroke="#1e40af" stroke-width="2" opacity="0.5"/>
+    <line x1="30" y1="120" x2="226" y2="120" stroke="#1e40af" stroke-width="2" opacity="0.5"/>
+    <line x1="30" y1="160" x2="226" y2="160" stroke="#1e40af" stroke-width="2" opacity="0.5"/>
+  </g>
+  
+  <!-- Ship wave effect -->
+  <path d="M 80 320 Q 150 300 220 320 T 380 320" stroke="#60a5fa" stroke-width="4" fill="none" opacity="0.6"/>
+  <path d="M 100 340 Q 170 320 240 340 T 400 340" stroke="#3b82f6" stroke-width="3" fill="none" opacity="0.4"/>
+  
+  <!-- Guinea flag accent (small) -->
+  <g transform="translate(360, 380)">
+    <rect x="0" y="0" width="60" height="12" fill="#CE1126"/>
+    <rect x="0" y="12" width="60" height="12" fill="#FCD116"/>
+    <rect x="0" y="24" width="60" height="12" fill="#009460"/>
+  </g>
+  
+  <!-- Text "TG" -->
+  <text x="256" y="420" font-family="Inter, sans-serif" font-size="80" font-weight="700" fill="#ffffff" text-anchor="middle">TG</text>
+</svg>

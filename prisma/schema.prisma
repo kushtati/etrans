@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String              @id @default(cuid())
+  email            String              @unique
+  password         String
+  name             String?
+  role             Role                @default(AGENT)
+  twoFactorEnabled Boolean             @default(false)
+  twoFactorSecret  String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  lastLogin        DateTime?
+  failedAttempts   Int                 @default(0)
+  lockedUntil      DateTime?
+  auditLogs        AuditLog[]
+  shipments        Shipment[]          @relation("CreatedBy")
+  webAuthnCredentials WebAuthnCredential[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model WebAuthnCredential {
+  id              String   @id @default(cuid())
+  userId          String
+  credentialId    String   @unique // ID unique du credential (base64)
+  publicKey       String   // Clé publique (base64)
+  counter         Int      @default(0) // Compteur anti-replay
+  deviceName      String?  // Nom de l'appareil (ex: "iPhone 15 Pro")
+  createdAt       DateTime @default(now())
+  lastUsedAt      DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([credentialId])
+  @@map("webauthn_credentials")
+}
+
+model Shipment {
+  id                String         @id @default(cuid())
+  trackingNumber    String         @unique
+  blNumber          String?
+  containerNumber   String?
+  clientName        String
+  clientContact     String?
+  arrivalDate       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  status            ShipmentStatus @default(PENDING)
+  declarationNumber String?
+  hsCode            String?
+  commodityType     String?
+  commodityValue    Float?
+  deliveryCompany   String?
+  deliveryDate      DateTime?
+  deliveryDriver    String?
+  deliveryPhone     String?
+  createdById       String
+  documents         Document[]
+  expenses          Expense[]
+  createdBy         User           @relation("CreatedBy", fields: [createdById], references: [id])
+
+  @@index([trackingNumber])
+  @@index([status])
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("shipments")
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  type       String
+  name       String
+  url        String
+  uploadDate DateTime @default(now())
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([type])
+  @@map("documents")
+}
+
+model Expense {
+  id          String      @id @default(cuid())
+  description String
+  amount      Float
+  category    String
+  type        ExpenseType
+  paid        Boolean     @default(false)
+  paidAt      DateTime?
+  date        DateTime    @default(now())
+  receiptUrl  String?
+  shipmentId  String
+  shipment    Shipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([category])
+  @@index([paid])
+  @@map("expenses")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AILog {
+  id           String   @id @default(cuid())
+  userId       String
+  endpoint     String
+  model        String
+  inputLength  Int
+  outputLength Int?
+  duration     Int
+  success      Boolean
+  error        String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([endpoint])
+  @@index([createdAt])
+  @@map("ai_logs")
+}
+
+enum Role {
+  DIRECTOR
+  ACCOUNTANT
+  AGENT
+  CLIENT
+}
+
+enum ShipmentStatus {
+  PENDING
+  ARRIVED
+  DECLARATION_FILED
+  CUSTOMS_PAID
+  CLEARANCE_OBTAINED
+  IN_DELIVERY
+  DELIVERED
+  ARCHIVED
+}
+
+enum ExpenseType {
+  PROVISION
+  DISBURSEMENT
+}

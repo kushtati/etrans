@@ -1,0 +1,112 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# ============================================
+# REDIRECTS - SPA Routing
+# ============================================
+
+# API Proxy - Évite CORS, cache Netlify Edge
+[[redirects]]
+  from = "/api/*"
+  to = "https://api.transitguinee.com/:splat"
+  status = 200
+  force = true
+  [redirects.headers]
+    X-Forwarded-Host = "transitguinee.com"
+
+# SPA Fallback (doit être après API proxy)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# ============================================
+# HEADERS DE SÉCURITÉ
+# ============================================
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Permissions-Policy = "geolocation=(self), microphone=(), camera=(self), payment=(), usb=()"
+    
+    # Content Security Policy
+    # ⚠️ TODO Production: Retirer 'unsafe-inline' 'unsafe-eval' après audit code
+    # Vite build génère normalement des hashes CSP automatiques
+    Content-Security-Policy = '''
+      default-src 'self';
+      script-src 'self' 'unsafe-inline';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: https:;
+      connect-src 'self' https://*.transitguinee.com https://api.transitguinee.com;
+      frame-ancestors 'none';
+      base-uri 'self';
+      form-action 'self';
+    '''
+
+# Service Worker - Pas de cache
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+# Service Worker public - Pas de cache
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+# Workbox runtime
+[[headers]]
+  for = "/workbox-*.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Assets avec hash - Cache immutable 1 an
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Images - Cache 6 mois
+[[headers]]
+  for = "*.{png,jpg,jpeg,webp,avif,svg}"
+  [headers.values]
+    Cache-Control = "public, max-age=15552000"
+
+[[headers]]
+  for = "*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Manifest - Cache 1 jour
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+# HTML - Cache court avec revalidation (5 min pour updates PWA rapides)
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+# Favicon - Cache 6 mois
+[[headers]]
+  for = "*.ico"
+  [headers.values]
+    Cache-Control = "public, max-age=15552000"

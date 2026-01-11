@@ -1,0 +1,109 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    
+    <!-- 🔒 Sécurité CSP (Content Security Policy) -->
+    <!-- Protection XSS initiale avant Helmet backend -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; base-uri 'self'; form-action 'self';" />
+    
+    <!-- SEO -->
+    <title>TransitGuinée Secure - Gestion Logistique Portuaire</title>
+    <meta name="description" content="Système professionnel de gestion des opérations de transit et dédouanement en Guinée. Suivi temps réel, gestion financière intégrée, mode offline." />
+    <meta name="author" content="TransitGuinée Secure" />
+    <link rel="canonical" href="https://transit.guinee.gn" />
+    
+    <!-- Open Graph (WhatsApp, Facebook, LinkedIn) -->
+    <meta property="og:title" content="TransitGuinée Secure - Plateforme Transit Intelligente" />
+    <meta property="og:description" content="Solution professionnelle pour la gestion des opérations de transit et dédouanement en Guinée" />
+    <meta property="og:image" content="https://transit.guinee.gn/og-image.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://transit.guinee.gn" />
+    <meta property="og:site_name" content="TransitGuinée Secure" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TransitGuinée Secure" />
+    <meta name="twitter:description" content="Plateforme de transit portuaire intelligente" />
+    <meta name="twitter:image" content="https://transit.guinee.gn/og-image.png" />
+    
+    <!-- PWA -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TransitGN" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    
+    <!-- ⚡ Polices locales (économise 770ms de blocage) -->
+    <link rel="stylesheet" href="/fonts/inter.css">
+    
+    <!-- Critical CSS (First Paint uniquement - inline) -->
+    <style>
+      body { 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+        background-color: #f1f5f9;
+        -webkit-tap-highlight-color: transparent;
+        color: #0f172a;
+        margin: 0;
+        padding: 0;
+      }
+      #root {
+        min-height: 100vh;
+      }
+      /* Hide scrollbar for cleaner mobile look (desktop garde indicateur) */
+      @media (hover: none) {
+        ::-webkit-scrollbar { display: none; }
+      }
+      
+      /* Loading spinner (retiré automatiquement quand React monte) */
+      .app-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        z-index: 9999;
+      }
+      .app-loader-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(59, 130, 246, 0.2);
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      .app-loader-text {
+        margin-top: 16px;
+        color: #94a3b8;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body class="antialiased selection:bg-slate-800 selection:text-white">
+    <div id="root">
+      <!-- Loader initial (supprimé quand React charge) -->
+      <div class="app-loader">
+        <div class="app-loader-spinner"></div>
+        <div class="app-loader-text">TransitGuinée Secure</div>
+      </div>
+    </div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

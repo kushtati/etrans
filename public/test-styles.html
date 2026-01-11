@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Styles - TransitGuinée</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-box {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { color: #22c55e; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        h1 { color: #1e40af; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test de Diagnostic - Styles CSS</h1>
+    
+    <div class="test-box">
+        <h2 class="success">✅ Si vous voyez cette box avec un fond blanc...</h2>
+        <p>Le CSS en ligne fonctionne! Le problème vient des styles Tailwind.</p>
+    </div>
+
+    <div class="test-box">
+        <h2>🎨 Tests de style</h2>
+        <p class="success">✅ Texte vert (success)</p>
+        <p class="error">❌ Texte rouge (error)</p>
+        <p class="warning">⚠️ Texte orange (warning)</p>
+    </div>
+
+    <div class="test-box">
+        <h2>🔗 Tests de chargement des ressources</h2>
+        <div id="css-test"></div>
+        <div id="font-test"></div>
+    </div>
+
+    <script>
+        // Test si les ressources se chargent
+        const cssTest = document.getElementById('css-test');
+        const fontTest = document.getElementById('font-test');
+
+        // Test CSS chargé
+        const computedStyle = window.getComputedStyle(document.body);
+        const bgColor = computedStyle.backgroundColor;
+        cssTest.innerHTML = `
+            <p><strong>Background détecté:</strong> ${bgColor}</p>
+            <p>${bgColor === 'rgb(240, 240, 240)' ? '<span class="success">✅ CSS en ligne OK</span>' : '<span class="error">❌ CSS problème</span>'}</p>
+        `;
+
+        // Test polices
+        const fontFamily = computedStyle.fontFamily;
+        fontTest.innerHTML = `
+            <p><strong>Police détectée:</strong> ${fontFamily}</p>
+        `;
+
+        // Ouvrir dans 3 secondes l'application réelle
+        console.log('Test terminé. Ouverture de l\'application dans 3 secondes...');
+        setTimeout(() => {
+            console.log('Redirection vers l\'application...');
+            // Ne pas rediriger automatiquement - laisser user voir résultats
+        }, 3000);
+    </script>
+
+    <div class="test-box">
+        <h2>📊 Instructions de test</h2>
+        <ol>
+            <li><strong>Ouvrez la console navigateur (F12)</strong></li>
+            <li>Vérifiez les erreurs de chargement CSS/fonts</li>
+            <li>Cherchez des erreurs 404 ou CSP (Content Security Policy)</li>
+            <li>Vérifiez si <code>index.css</code> se charge</li>
+            <li>Vérifiez si Google Fonts (Inter) se charge</li>
+        </ol>
+        
+        <h3 class="warning">⚠️ Si l'application n'a pas de styles:</h3>
+        <ul>
+            <li>Problème 1: <code>src/index.css</code> non importé dans <code>index.tsx</code></li>
+            <li>Problème 2: Tailwind non configuré correctement</li>
+            <li>Problème 3: CSP bloque les styles inline ou Google Fonts</li>
+            <li>Problème 4: Vite ne compile pas le CSS</li>
+        </ul>
+
+        <h3 class="success">✅ Si vous voyez ce message stylisé:</h3>
+        <p>Le problème vient spécifiquement de Tailwind ou de l'import index.css dans React.</p>
+
+        <div style="margin-top: 20px; padding: 15px; background: #dbeafe; border-left: 4px solid #3b82f6;">
+            <strong>🚀 Retour à l'application:</strong>
+            <br>
+            <a href="http://localhost:5173" style="color: #1e40af; font-weight: bold;">http://localhost:5173</a>
+        </div>
+    </div>
+</body>
+</html>

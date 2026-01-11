@@ -1,0 +1,69 @@
+/**
+ * TAILWIND CSS V4 - Point d'entrée
+ * 
+ * Tailwind CSS 4 utilise @import au lieu de @tailwind
+ * Vite va le compiler et purger les classes non utilisées
+ * 
+ * Résultat: ~10-20 KB au lieu de 3.5 MB du CDN
+ */
+
+/* Import Inter font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ✅ Tailwind CSS v4 - Nouveau format avec @import */
+@import "tailwindcss";
+
+/* CSS Variables pour thème */
+:root {
+  --color-bg-primary: #f1f5f9;
+  --color-text-primary: #0f172a;
+  --color-bg-secondary: #ffffff;
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+}
+
+/* Custom global styles */
+body {
+  font-family: var(--font-primary);
+  background-color: var(--color-bg-primary);
+  -webkit-tap-highlight-color: transparent;
+  color: var(--color-text-primary);
+}
+
+/* Hide scrollbar cross-browser (Webkit + Firefox + Edge) */
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Animations pour modal professionnelle */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease-out;
+}

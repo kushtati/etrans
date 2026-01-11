@@ -1,0 +1,121 @@
+# ============================================
+# 🐳 DOCKER COMPOSE - TransitGuinée Infrastructure
+# ============================================
+# Services: PostgreSQL 15 + Redis 7
+# Sécurité: Passwords variables env, networks isolation, localhost binding
+# Usage: docker-compose up -d
+# ============================================
+
+services:
+  # 📊 PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: transit-postgres
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # ⚠️ Binding localhost uniquement (sécurité réseau local)
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      app: "transit-guinee"
+      tier: "database"
+      environment: "development"
+
+  # 🔴 Redis (Rate limiting + sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: transit-redis
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    ports:
+      # ⚠️ Binding localhost uniquement (sécurité réseau local)
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend-network
+    # ⚠️ Si REDIS_PASSWORD vide, lance sans auth (dev only)
+    # Production: REDIS_PASSWORD requis dans .env.docker
+    command: >
+      sh -c '
+      if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+      else
+        echo "⚠️  WARNING: Redis running without password (DEV ONLY)"
+        redis-server --appendonly yes
+      fi
+      '
+    healthcheck:
+      test: |
+        if [ -n "$REDIS_PASSWORD" ]; then
+          redis-cli -a "$REDIS_PASSWORD" ping
+        else
+          redis-cli ping
+        fi
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      app: "transit-guinee"
+      tier: "cache"
+      environment: "development"
+
+# 🌐 Networks isolation (internal = pas d'accès internet)
+networks:
+  backend-network:
+    driver: bridge
+    internal: false  # true en production si pas besoin internet depuis containers
+
+# 💾 Volumes persistants
+volumes:
+  postgres_data:
+    driver: local
+    labels:
+      backup: "daily"
+  redis_data:
+    driver: local
+    labels:
+      backup: "weekly"
