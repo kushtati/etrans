@@ -89,7 +89,8 @@ const allowedOrigins = [
   'https://www.transit.guinee.gn',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  // Railway.app domains
+  // Railway.app backend
+  'https://web-production-9e58c.up.railway.app',
   /\.up\.railway\.app$/,
   // Vercel domains
   /\.vercel\.app$/,
