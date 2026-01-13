@@ -1,0 +1,4 @@
+# Backend-only build for Railway
+# Frontend (Vite) is deployed separately on Vercel
+NIXPACKS_BUILD_CMD="npx prisma generate"
+NIXPACKS_START_CMD="npx prisma migrate deploy && npm run start"
