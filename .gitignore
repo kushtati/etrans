@@ -35,8 +35,11 @@ out/
 .env.docker
 .env.production
 .env.*.local
-# ✅ Garder template (committé)
+# ✅ Garder templates (committés)
 !.env.example
+!.env.development
+!.env.docker.example
+!.env.production.template
 
 # ============================================
 # 💾 DATABASES & BACKUPS
