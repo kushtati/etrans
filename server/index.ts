@@ -44,11 +44,8 @@ import { initRedis, redis } from './config/redis';
 // ============================================
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
-// Production: écouter sur toutes interfaces pour hébergeurs (Railway, Render, etc.)
-// Development: Windows utilise localhost, autres OS utilisent 0.0.0.0
-const HOST = process.env.NODE_ENV === 'production' 
-  ? '0.0.0.0' 
-  : (process.env.HOST || (process.platform === 'win32' ? 'localhost' : '0.0.0.0'));
+// Production: TOUJOURS écouter sur 0.0.0.0 pour Railway/Render
+const HOST = process.env.HOST || '0.0.0.0';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // ============================================
@@ -184,6 +181,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // ============================================
 // ROUTES
 // ============================================
+
+// Root health check (Railway detection)
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    service: 'Transit Guinée API',
+    status: 'running',
+    version: '1.1.0',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
@@ -356,13 +363,15 @@ const startServer = () => {
     });
     
     httpServer.listen(PORT, HOST, () => {
+      console.log(`🚀 Server started successfully`);
+      console.log(`📡 Listening on ${HOST}:${PORT}`);
+      console.log(`🌍 Environment: ${NODE_ENV}`);
+      console.log(`✅ Ready to accept connections`);
+      
+      // Railway healthcheck
       if (NODE_ENV === 'production') {
-        console.log(`🚀 Production server running on port ${PORT}`);
-        console.log(`🌍 Environment: ${NODE_ENV}`);
-      } else {
-        console.log(`🚀 Development server running on http://${HOST}:${PORT}`);
+        console.log(`🏥 Health endpoint: http://${HOST}:${PORT}/health`);
       }
-      console.log(`📡 Ready to accept connections`);
     });
   }
 };
