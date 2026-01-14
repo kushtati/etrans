@@ -20,7 +20,7 @@
     "build:server": "tsc --project tsconfig.server.json",
     "build:all": "npm run build && npm run build:server",
     "start": "tsx server/index.ts",
-    "start:prod": "node dist/server/index.js",
+    "start:prod": "tsx server/index.ts",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",

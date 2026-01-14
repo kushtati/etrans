@@ -22,7 +22,8 @@ const financeLimiter = rateLimit({
   keyGenerator: (req) => req.user?.id || req.ip || 'anonymous',
   message: { error: 'Limite finance atteinte. Réessayez dans 15 minutes.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  validate: false
 });
 
 // 🔒 CONSTANTES DE SÉCURITÉ

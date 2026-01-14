@@ -47,7 +47,8 @@ const analyzeLimiter = rateLimit({
   keyGenerator: (req) => req.user?.id || req.ip || 'anonymous', // ✅ Per-user rate limiting
   message: { error: 'Limite de 100 analyses/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  validate: false
 });
 
 // 🚦 Rate Limiting : 50 requêtes/jour pour assistant (per-user)
@@ -57,7 +58,8 @@ const assistantLimiter = rateLimit({
   keyGenerator: (req) => req.user?.id || req.ip || 'anonymous', // ✅ Per-user rate limiting
   message: { error: 'Limite de 50 questions/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  validate: false
 });
 
 /**
