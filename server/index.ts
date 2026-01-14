@@ -300,47 +300,27 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 let server: http.Server | https.Server;
 
 const startServer = () => {
+  // Railway gère HTTPS automatiquement via son proxy
+  // On utilise toujours HTTP en interne
   if (NODE_ENV === 'production') {
-    // HTTPS en production
-    try {
-      const privateKey = fs.readFileSync('/etc/ssl/private/server.key', 'utf8');
-      const certificate = fs.readFileSync('/etc/ssl/certs/server.crt', 'utf8');
-      const ca = fs.readFileSync('/etc/ssl/certs/ca.crt', 'utf8');
-
-      const credentials = {
-        key: privateKey,
-        cert: certificate,
-        ca: ca
-      };
-
-      const httpsServer = https.createServer(credentials, app);
-      server = httpsServer; // Stocker pour shutdown
-
-      httpsServer.listen(443, HOST, () => {
-        console.log(`✅ HTTPS Server running on https://${HOST}:443`);
-      });
-
-      // Redirection HTTP → HTTPS
-      const httpApp = express();
-      httpApp.use((req, res) => {
-        res.redirect(301, `https://${req.headers.host}${req.url}`);
-      });
-
-      httpApp.listen(80, HOST, () => {
-        console.log('✅ HTTP → HTTPS redirect on port 80');
-      });
-
-    } catch (error) {
-      console.error('❌ HTTPS setup failed:', error);
-      console.log('⚠️ Falling back to HTTP (INSECURE)');
-      
-      const httpServer = http.createServer(app);
-      server = httpServer; // Stocker pour shutdown
-      
-      httpServer.listen(PORT, HOST, () => {
-        console.log(`⚠️ HTTP Server running on http://${HOST}:${PORT}`);
-      });
-    }
+    console.log(`🚀 Starting production server on ${HOST}:${PORT}`);
+    console.log(`📡 Railway will handle HTTPS termination`);
+    
+    const httpServer = http.createServer(app);
+    server = httpServer; // Stocker pour shutdown
+    
+    httpServer.on('error', (error: any) => {
+      console.error('❌ Server startup error:', error);
+      process.exit(1);
+    });
+    
+    httpServer.listen(PORT, HOST, () => {
+      console.log(`🚀 Server started successfully`);
+      console.log(`📡 Listening on ${HOST}:${PORT}`);
+      console.log(`🌍 Environment: ${NODE_ENV}`);
+      console.log(`✅ Ready to accept connections`);
+      console.log(`🏥 Health endpoint: http://${HOST}:${PORT}/health`);
+    });
     
   } else {
     // HTTP en développement
@@ -434,13 +414,17 @@ process.on('unhandledRejection', (reason, promise) => {
 // START SERVER
 // ============================================
 
+console.log('[SERVER] 🚀 Initializing server...');
+
 // Initialiser DB audit avant démarrage
 initAuditDB()
   .then(async () => {
-    console.log('✅ Audit DB ready');
+    console.log('[SERVER] ✅ Audit DB ready');
     
     // Initialiser Redis pour rate limiting et token blacklist
+    console.log('[SERVER] 🔄 Initializing Redis...');
     await initRedis();
+    console.log('[SERVER] ✅ Redis ready');
     
     // TODO: Démarrer jobs de nettoyage (désactivé temporairement)
     // import('./services/cleanupJobs')
@@ -452,11 +436,12 @@ initAuditDB()
     //     console.warn('⚠️ Cleanup jobs failed to start (non-critical):', error.message);
     //   });
     
+    console.log('[SERVER] 🔄 Starting HTTP server...');
     startServer();
   })
   .catch((error) => {
-    console.error('⚠️ Audit DB initialization failed:', error);
-    console.log('⚠️ Starting server without audit logs...');
+    console.error('[SERVER] ⚠️ Audit DB initialization failed:', error);
+    console.log('[SERVER] ⚠️ Starting server without audit logs...');
     startServer();
   });
 
