@@ -57,10 +57,16 @@ export function validateEnvironment(): void {
     console.error('🚨 ERREUR FATALE: Variables environnement manquantes:\n');
     errors.forEach(err => console.error(`  ${err}`));
     console.error('\n📝 Actions requises:');
-    console.error('  1. Copier .env.example vers .env.server');
-    console.error('  2. Remplacer TOUTES les valeurs YOUR_*');
-    console.error('  3. Redémarrer le serveur\n');
-    process.exit(1);
+    console.error('  1. Vérifier les variables Railway');
+    console.error('  2. Ajouter toutes les variables requises');
+    console.error('  3. Redémarrer le service\n');
+    console.error('\n🔍 Variables actuelles:');
+    console.error(`  GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? '✅' : '❌'}`);
+    console.error(`  JWT_SECRET: ${process.env.JWT_SECRET ? '✅' : '❌'}`);
+    console.error(`  DATABASE_URL: ${process.env.DATABASE_URL ? '✅' : '❌'}`);
+    console.error(`  PORT: ${process.env.PORT ? '✅' : '❌'}`);
+    console.error(`  NODE_ENV: ${process.env.NODE_ENV ? '✅' : '❌'}\n`);
+    throw new Error('Environment validation failed: ' + errors.join(', '));
   }
   
   // ============================================
@@ -160,7 +166,7 @@ export function validateEnvironment(): void {
     console.error('\n🚨 ERREURS CRITIQUES:\n');
     errors.forEach(err => console.error(`  ${err}`));
     console.error('\n🛑 Le serveur ne peut pas démarrer avec ces erreurs.\n');
-    process.exit(1);
+    throw new Error('Environment validation failed: ' + errors.join(', '));
   }
   
   if (warnings.length > 0) {
