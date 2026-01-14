@@ -65,8 +65,13 @@ export function validateEnvironment(): void {
     console.error(`  JWT_SECRET: ${process.env.JWT_SECRET ? '✅' : '❌'}`);
     console.error(`  DATABASE_URL: ${process.env.DATABASE_URL ? '✅' : '❌'}`);
     console.error(`  PORT: ${process.env.PORT ? '✅' : '❌'}`);
-    console.error(`  NODE_ENV: ${process.env.NODE_ENV ? '✅' : '❌'}\n`);
-    throw new Error('Environment validation failed: ' + errors.join(', '));
+    console.error(`  NODE_ENV: ${process.env.NODE_ENV ? '✅' : '❌'}\n');
+    
+    // Attendre 2s pour que les logs soient flush sur Railway
+    setTimeout(() => {
+      throw new Error('Environment validation failed: ' + errors.join(', '));
+    }, 2000);
+    return; // Ne pas continuer pendant l'attente
   }
   
   // ============================================
