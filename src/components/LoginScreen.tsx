@@ -46,11 +46,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       setError('Navigateur non compatible avec les standards de sécurité requis');
     }
 
-    // Récupérer CSRF token
-    fetch('/api/auth/csrf-token')
+    // Récupérer CSRF token avec timeout 5s
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    fetch('/api/auth/csrf-token', { signal: controller.signal })
       .then(res => res.json())
-      .then(data => setCsrfToken(data.token))
-      .catch(err => logger.error('CSRF token fetch failed', err));
+      .then(data => {
+        clearTimeout(timeoutId);
+        setCsrfToken(data.token);
+      })
+      .catch(err => {
+        clearTimeout(timeoutId);
+        logger.error('CSRF token fetch failed', { error: err.message });
+      });
   }, []);
 
   // Évaluer force du mot de passe
@@ -198,16 +207,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         throw new Error('Identifiants invalides');
       }
 
-      // 7. Décoder JWT token (vérification structure/expiration uniquement)
-      // ⚠️ Backend DOIT vérifier signature JWT (cette vérif client = UX uniquement)
-      const jwtCheck = decodeJWTUnsafe(data.token);
-      if (!jwtCheck.isValid) {
-        setError('Token de sécurité invalide. Réessayez.');
-        logger.error('Invalid JWT received from server', { error: jwtCheck.error });
-        return;
-      }
-
-      // 8. Succès - Réinitialiser rate limit
+      // 7. Succès - Réinitialiser rate limit
+      // Note: Backend a déjà validé JWT signature, pas besoin côté client
       rateLimiter.reset(sanitizedEmail);
       
       logger.audit('LOGIN_SUCCESS', { 

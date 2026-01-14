@@ -10,6 +10,7 @@
  */
 
 import { GoogleGenAI, Type, GenerateContentResponse } from '@google/genai';
+import { logger, logError } from '../config/logger';
 import { 
   AnalysisTextInputSchema,
   AnalysisImageInputSchema,
@@ -114,6 +115,30 @@ export class GeminiService {
     if (!apiKey) {
       throw new GeminiConfigError('API Key manquante');
     }
+    
+    // En développement : accepter placeholders (désactive Gemini)
+    const isPlaceholder = apiKey.includes('YOUR_GEMINI') || 
+                          apiKey.includes('CHANGE_ME') || 
+                          apiKey.includes('OPTIONNEL') ||
+                          apiKey === 'test-key-dev';
+    
+    if (process.env.NODE_ENV !== 'production' && isPlaceholder) {
+      logger.warn('Gemini API Key placeholder détectée - AI désactivé');
+      this.ai = null; // Pas d'init client en dev avec placeholder
+      this.config = { ...DEFAULT_CONFIG, ...config };
+      return;
+    }
+    
+    // Validation format API key Google (AIzaSy* OU AIza* OU gen-lang-client-* - min 20 chars)
+    const isValidFormat = (
+      apiKey.startsWith('AIzaSy') || 
+      apiKey.startsWith('AIza') || 
+      apiKey.startsWith('gen-lang-client-')
+    ) && apiKey.length >= 20;
+    
+    if (!isValidFormat) {
+      throw new GeminiConfigError(`Format API key invalide: doit commencer par AIza* ou gen-lang-client-* (longueur: ${apiKey.length})`);
+    }
 
     this.ai = new GoogleGenAI({ apiKey });
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -130,7 +155,10 @@ export class GeminiService {
     
     for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
       try {
-        console.log(`[Gemini] Attempt ${attempt}/${this.config.maxRetries}`);
+        logger.info('Gemini analyzeTransitInfo attempt', { 
+          attempt, 
+          maxRetries: this.config.maxRetries 
+        });
 
         // 🛡️ Validation basique input
         if (!input || input.length === 0) {
@@ -169,7 +197,11 @@ export class GeminiService {
           input = sanitizeText(validation.data.text);
           const { estimatedTokens, estimatedCostUSD } = estimateTokenCost(input);
           
-          console.log(`[Gemini] Input validated: ${input.length} chars, ~${estimatedTokens} tokens, ~$${estimatedCostUSD.toFixed(6)}`);
+          logger.info('Gemini input validated', { 
+            inputLength: input.length, 
+            estimatedTokens, 
+            estimatedCostUSD: estimatedCostUSD.toFixed(6) 
+          });
         }
 
         // Construire contents pour Gemini
@@ -252,22 +284,29 @@ export class GeminiService {
         // 🎯 Validation cohérence (formats BL, conteneur, codes HS)
         const validation = validateAnalysisResponse(parsed);
         if (!validation.valid) {
-          console.warn('[Gemini] Validation warnings:', validation.errors);
+          logger.warn('Gemini validation warnings', { 
+            errors: validation.errors,
+            detectedType: parsed.detectedType 
+          });
           // Continuer quand même mais logger les warnings
         }
 
         const duration = Date.now() - startTime;
-        console.log(`[Gemini] ✅ Success in ${duration}ms`);
+        logger.info('Gemini analysis success', { 
+          durationMs: duration,
+          detectedType: parsed.detectedType 
+        });
 
         return parsed;
 
       } catch (error: any) {
         const duration = Date.now() - startTime;
         
-        console.error(`[Gemini] ❌ Attempt ${attempt} failed after ${duration}ms:`, {
-          name: error.name,
-          message: error.message,
-          status: error.status
+        logError('Gemini analysis attempt failed', error, {
+          attempt,
+          durationMs: duration,
+          errorName: error.name,
+          errorStatus: error.status
         });
 
         // Erreurs de configuration (non retryable)
@@ -278,7 +317,7 @@ export class GeminiService {
         // Erreurs 400/401/403 (non retryable)
         if (error.status === 400 || error.status === 401 || error.status === 403) {
           throw new GeminiConfigError(
-            `Erreur configuration API (${error.status}): ${error.message}`
+            'Service temporairement indisponible. Vérifiez la configuration.'
           );
         }
 
@@ -286,20 +325,20 @@ export class GeminiService {
         if (error.status === 429) {
           if (attempt < this.config.maxRetries) {
             const delay = this.config.baseDelay * Math.pow(2, attempt - 1);
-            console.log(`[Gemini] ⏳ Rate limit, retry dans ${delay}ms`);
+            logger.info('Gemini rate limit retry', { delayMs: delay, attempt });
             await sleep(delay);
             continue;
           }
           throw new GeminiRateLimitError(
-            'Limite de requêtes atteinte. Réessayez plus tard.'
+            'Service temporairement saturé. Réessayez dans quelques minutes.'
           );
         }
 
         // Timeout
         if (error instanceof GeminiTimeoutError) {
           if (attempt < this.config.maxRetries) {
-            const delay = this.config.baseDelay * attempt;
-            console.log(`[Gemini] ⏳ Timeout, retry dans ${delay}ms`);
+            const delay = this.config.baseDelay * Math.pow(2, attempt - 1);
+            logger.info('Gemini timeout retry', { delayMs: delay, attempt });
             await sleep(delay);
             continue;
           }
@@ -314,7 +353,7 @@ export class GeminiService {
         // Network/500 errors (retryable)
         if (attempt < this.config.maxRetries) {
           const delay = this.config.baseDelay * Math.pow(2, attempt - 1);
-          console.log(`[Gemini] ⏳ Erreur temporaire, retry dans ${delay}ms`);
+          logger.info('Gemini temporary error retry', { delayMs: delay, attempt });
           await sleep(delay);
           continue;
         }
@@ -341,7 +380,11 @@ export class GeminiService {
 
     for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
       try {
-        console.log(`[Gemini] Assistant attempt ${attempt}/${this.config.maxRetries}`);
+        logger.info('Gemini assistant attempt', { 
+          attempt, 
+          maxRetries: this.config.maxRetries,
+          userId 
+        });
 
         // 🛡️ Validation Zod avec détection injection
         const validation = validateInput(
@@ -358,7 +401,12 @@ export class GeminiService {
         question = sanitizeText(validation.data.question);
         
         const { estimatedTokens, estimatedCostUSD } = estimateTokenCost(question);
-        console.log(`[Gemini] Question validated: ${question.length} chars, ~${estimatedTokens} tokens, ~$${estimatedCostUSD.toFixed(6)}`);
+        logger.info('Gemini question validated', { 
+          questionLength: question.length, 
+          estimatedTokens, 
+          estimatedCostUSD: estimatedCostUSD.toFixed(6),
+          userId 
+        });
 
         // 💬 Récupérer ou créer session de chat
         const session = getOrCreateChatSession(sessionId || null, userId);
@@ -374,7 +422,11 @@ export class GeminiService {
           ? `${buildAssistantPrompt(question)}\n\nHISTORIQUE CONVERSATION:\n${conversationHistory}`
           : buildAssistantPrompt(question);
         
-        console.log(`[Gemini] Session ${session.id}: ${session.messages.length} messages`);
+        logger.info('Gemini session context', { 
+          sessionId: session.id, 
+          messageCount: session.messages.length,
+          userId 
+        });
 
         // Appel Gemini avec timeout
         const responsePromise = this.ai!.models.generateContent({
@@ -406,21 +458,29 @@ export class GeminiService {
         addMessageToSession(session.id, 'assistant', answer);
 
         const duration = Date.now() - startTime;
-        console.log(`[Gemini] ✅ Assistant success in ${duration}ms`);
+        logger.info('Gemini assistant success', { 
+          durationMs: duration,
+          sessionId: session.id,
+          userId 
+        });
+
+        // Extraire confidence du response
+        const confidence = response.candidates?.[0]?.finishReason === 'STOP' ? 0.9 : 0.7;
 
         return {
           sessionId: session.id,
           answer,
-          confidence: 0.9 // TODO: Extraire du response si disponible
+          confidence
         };
 
       } catch (error: any) {
         const duration = Date.now() - startTime;
         
-        console.error(`[Gemini] ❌ Assistant attempt ${attempt} failed:`, {
-          name: error.name,
-          message: error.message,
-          duration
+        logError('Gemini assistant attempt failed', error, {
+          attempt,
+          durationMs: duration,
+          userId,
+          errorName: error.name
         });
 
         // Mêmes règles retry que analyzeTransitInfo
@@ -439,7 +499,7 @@ export class GeminiService {
         }
 
         if (attempt < this.config.maxRetries) {
-          const delay = this.config.baseDelay * attempt;
+          const delay = this.config.baseDelay * Math.pow(2, attempt - 1);
           await sleep(delay);
           continue;
         }
@@ -455,24 +515,26 @@ export class GeminiService {
 }
 
 /**
- * Factory avec instance singleton
+ * Factory avec instance singleton (thread-safe)
+ * Initialisation immédiate au chargement du module
  */
-let geminiServiceInstance: GeminiService | null = null;
-
-export const getGeminiService = (): GeminiService => {
-  if (!geminiServiceInstance) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new GeminiConfigError('GEMINI_API_KEY manquante dans environnement');
-    }
-
-    geminiServiceInstance = new GeminiService(apiKey, {
-      maxRetries: 3,
-      baseDelay: 1000,
-      timeout: 30000,
-      model: 'gemini-1.5-flash'
-    });
+const initializeGeminiService = (): GeminiService => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new GeminiConfigError('GEMINI_API_KEY manquante dans environnement');
   }
 
+  return new GeminiService(apiKey, {
+    maxRetries: 3,
+    baseDelay: 1000,
+    timeout: 15000, // 15s pour meilleure UX
+    model: 'gemini-1.5-flash'
+  });
+};
+
+// Initialisation immédiate (évite race conditions)
+const geminiServiceInstance: GeminiService = initializeGeminiService();
+
+export const getGeminiService = (): GeminiService => {
   return geminiServiceInstance;
 };

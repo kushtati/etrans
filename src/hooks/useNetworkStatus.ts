@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { offlineQueue } from '../services/offlineQueue';
+import { logger } from '../services/logger';
 
 export interface NetworkStatus {
   isOnline: boolean;
@@ -40,7 +41,7 @@ export const useNetworkStatus = (): NetworkStatus => {
         setPendingActions(stats.pending);
         setIsSyncing(stats.processing);
       } catch (error) {
-        console.error('useNetworkStatus: erreur getStats', error);
+        logger.error('useNetworkStatus: erreur getStats', { error });
         // Garder état précédent en cas d'erreur
       }
     });
@@ -50,7 +51,7 @@ export const useNetworkStatus = (): NetworkStatus => {
       setPendingActions(stats.pending);
       setIsSyncing(stats.processing);
     }).catch(error => {
-      console.error('useNetworkStatus: erreur getStats initial', error);
+      logger.error('useNetworkStatus: erreur getStats initial', { error });
     });
 
     return () => {

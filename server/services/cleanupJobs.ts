@@ -8,9 +8,9 @@
  */
 
 import cron from 'node-cron';
-import { cleanOldLogs as cleanDBLogs } from './auditService';
+import { cleanOldLogs as cleanDBLogs, getGlobalStats } from './auditService';
 import { cleanupOldLogs as cleanFileLogs } from './logService';
-import { logger } from './logService';
+import { logger, logError } from '../config/logger';
 
 /**
  * Job 1 : Nettoyage logs DB (quotidien à 3h du matin)
@@ -19,19 +19,37 @@ export const startDatabaseCleanupJob = () => {
   // Schedule configurable via env (défaut: 3h du matin)
   const schedule = process.env.DB_CLEANUP_CRON || '0 3 * * *';
   
+  // Validation CRON expression
+  if (!cron.validate(schedule)) {
+    logger.error('Invalid DB_CLEANUP_CRON expression', { schedule });
+    throw new Error(`Invalid CRON expression: ${schedule}`);
+  }
+  
   cron.schedule(schedule, async () => {
     logger.info('[CRON] Database cleanup started');
     
+    // Timeout 30min pour éviter jobs qui se chevauchent
+    const timeoutMs = 30 * 60 * 1000;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('DB cleanup timeout')), timeoutMs);
+    });
+    
     try {
-      // Nettoyer logs AI + audit > 90 jours
-      const deletedCount = await cleanDBLogs(90);
+      // Nettoyer logs AI + audit > 90 jours avec timeout
+      const deletedCount = await Promise.race([
+        cleanDBLogs(90),
+        timeoutPromise
+      ]);
       
       logger.info('[CRON] Database cleanup completed', { 
         deletedLogs: deletedCount 
       });
       
     } catch (error) {
-      logger.error('[CRON] Database cleanup failed', { error });
+      logError('CRON Database cleanup failed', error as Error, { 
+        jobName: 'DB_CLEANUP',
+        schedule 
+      });
     }
   });
 
@@ -45,19 +63,37 @@ export const startFileCleanupJob = () => {
   // Schedule configurable via env (défaut: dimanche 4h)
   const schedule = process.env.FILE_CLEANUP_CRON || '0 4 * * 0';
   
+  // Validation CRON expression
+  if (!cron.validate(schedule)) {
+    logger.error('Invalid FILE_CLEANUP_CRON expression', { schedule });
+    throw new Error(`Invalid CRON expression: ${schedule}`);
+  }
+  
   cron.schedule(schedule, async () => {
     logger.info('[CRON] File cleanup started');
     
+    // Timeout 30min
+    const timeoutMs = 30 * 60 * 1000;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('File cleanup timeout')), timeoutMs);
+    });
+    
     try {
-      // Nettoyer fichiers logs > 30 jours (Winston rotation gère déjà mais double sécurité)
-      const deletedCount = await cleanFileLogs(30);
+      // Nettoyer fichiers logs > 30 jours avec timeout
+      const deletedCount = await Promise.race([
+        cleanFileLogs(30),
+        timeoutPromise
+      ]);
       
       logger.info('[CRON] File cleanup completed', { 
         deletedFiles: deletedCount 
       });
       
     } catch (error) {
-      logger.error('[CRON] File cleanup failed', { error });
+      logError('CRON File cleanup failed', error as Error, { 
+        jobName: 'FILE_CLEANUP',
+        schedule 
+      });
     }
   });
 
@@ -71,10 +107,14 @@ export const startHealthCheckJob = () => {
   // Schedule configurable via env (défaut: midi)
   const schedule = process.env.HEALTH_CHECK_CRON || '0 12 * * *';
   
+  // Validation CRON expression
+  if (!cron.validate(schedule)) {
+    logger.error('Invalid HEALTH_CHECK_CRON expression', { schedule });
+    throw new Error(`Invalid CRON expression: ${schedule}`);
+  }
+  
   cron.schedule(schedule, async () => {
     try {
-      const { getGlobalStats } = await import('./auditService');
-      
       // Stats dernières 24h
       const stats = await getGlobalStats(1);
       
@@ -100,7 +140,10 @@ export const startHealthCheckJob = () => {
       }
       
     } catch (error) {
-      logger.error('[CRON] Health check failed', { error });
+      logError('CRON Health check failed', error as Error, { 
+        jobName: 'HEALTH_CHECK',
+        schedule 
+      });
     }
   });
 
@@ -138,7 +181,9 @@ export const runManualCleanup = async () => {
     return { dbDeleted, fileDeleted };
     
   } catch (error) {
-    logger.error('[MANUAL] Cleanup failed', { error });
+    logError('MANUAL Cleanup failed', error as Error, { 
+      jobName: 'MANUAL_CLEANUP' 
+    });
     throw error;
   }
 };

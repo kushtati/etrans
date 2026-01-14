@@ -18,10 +18,29 @@ import { logger } from '../services/logger';
 export const usePermissions = () => {
   const context = useContext(TransitContext);
   
-  // SÉCURITÉ CRITIQUE : Valider role avant toute vérification
+  // SÉCURITÉ CRITIQUE : Graceful degradation si context invalide
   if (!context || !context.role) {
-    logger.error('usePermissions: role manquant ou context invalide');
-    throw new Error('Session invalide - reconnexion requise');
+    logger.warn('usePermissions: role manquant ou context invalide - permissions vides');
+    // Retourner permissions vides au lieu de throw (graceful degradation)
+    return {
+      canViewFinance: false,
+      canMakePayments: false,
+      canAddExpenses: false,
+      canApproveExpenses: false,
+      canEditOperations: false,
+      canEditShipments: false,
+      canUploadDocuments: false,
+      canDeleteDocuments: false,
+      canManageUsers: false,
+      canViewAuditLogs: false,
+      canExportData: false,
+      canViewShipments: false,
+      canViewOwnShipments: false,
+      canCreate: false,
+      checkPermission: () => false,
+      requirePermission: () => false,
+      role: null as any
+    };
   }
   
   const { role } = context;
@@ -108,10 +127,8 @@ export const usePermissions = () => {
    * @returns true si accordé, false sinon
    */
   const requirePermission = (permission: Permission, context?: string): boolean => {
-    // SÉCURITÉ : Sanitizer context avant utilisation (anti-XSS)
-    const safeContext = context 
-      ? DOMPurify.sanitize(context, { ALLOWED_TAGS: [], KEEP_CONTENT: true })
-      : 'unknown context';
+    // Context est un paramètre interne (pas input utilisateur), pas besoin sanitize
+    const safeContext = context || 'unknown context';
     
     const granted = checkPermission(permission, safeContext);
     

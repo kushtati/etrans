@@ -47,12 +47,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewShipment, onCreateSh
   const [filterStatusSortiePort, setFilterStatusSortiePort] = useState<ShipmentStatus | 'ALL'>('ALL');
   const [sortBySortiePort, setSortBySortiePort] = useState<'date' | 'client' | 'status'>('date');
 
-  // Export functionality
+  // Export functionality with CSV injection protection
   const handleExportCSV = () => {
     if (filteredDossiers.length === 0) {
       alert('Aucun dossier à exporter');
       return;
     }
+
+    // CSV sanitization: escape formula injection
+    const sanitizeCSV = (value: string | number): string => {
+      const str = String(value);
+      // Escape =+-@ at start (CSV injection)
+      if (str.match(/^[=+\-@]/)) {
+        return "'" + str;
+      }
+      return str;
+    };
 
     // CSV Headers
     const headers = [
@@ -69,7 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewShipment, onCreateSh
       'Alertes'
     ];
 
-    // CSV Rows
+    // CSV Rows with sanitization
     const rows = filteredDossiers.map(dossier => {
       const totalFacture = (dossier.expenses || [])
         .filter(e => e.type === 'REVENUE')
@@ -82,17 +92,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewShipment, onCreateSh
       const alertes = (dossier.alerts || []).join('; ');
       
       return [
-        dossier.trackingNumber,
-        dossier.clientName,
-        dossier.blNumber,
-        dossier.description || '',
-        getStatusLabel(dossier.status),
+        sanitizeCSV(dossier.trackingNumber),
+        sanitizeCSV(dossier.clientName),
+        sanitizeCSV(dossier.blNumber),
+        sanitizeCSV(dossier.description || ''),
+        sanitizeCSV(getStatusLabel(dossier.status)),
         dossier.arrivalDate ? new Date(dossier.arrivalDate).toLocaleDateString('fr-FR') : '',
         trafficLight === 'green' ? 'Vert' : trafficLight === 'orange' ? 'Orange' : trafficLight === 'red' ? 'Rouge' : 'Gris',
         `${totalFacture.toLocaleString('fr-FR')} GNF`,
         `${totalPaye.toLocaleString('fr-FR')} GNF`,
         `${solde.toLocaleString('fr-FR')} GNF`,
-        alertes
+        sanitizeCSV(alertes)
       ];
     });
 
@@ -145,9 +155,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewShipment, onCreateSh
   // Calculate shipment balance with validation
   const calculateShipmentBalance = (expenses: any[]): number => {
     return expenses.reduce((acc, e) => {
-      if (typeof e.amount !== 'number' || isNaN(e.amount)) {
-        console.warn('[Dashboard] Invalid expense amount:', e);
-        return acc;
+      if (typeof e.amount !== 'number' || isNaN(e.amount) || !isFinite(e.amount)) {
+        logger.warn('Invalid expense amount detected', { expense: e });
+        return acc; // Skip invalid amount (graceful degradation)
       }
       
       if (e.type === 'PROVISION') return acc + e.amount;
@@ -166,7 +176,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewShipment, onCreateSh
         timeZone: 'Africa/Conakry'
       });
     } catch (e) {
-      console.warn('[Dashboard] Invalid date:', dateString);
+      logger.warn('Invalid date format', { dateString });
       return 'Date invalide';
     }
   };

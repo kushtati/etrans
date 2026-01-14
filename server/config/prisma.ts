@@ -19,7 +19,7 @@ declare global {
  * - En prod: crée une nouvelle instance
  */
 export const prisma = global.prisma || new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
 });
 
 // En dev, conserver l'instance globale

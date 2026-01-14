@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTransit } from '../hooks/useTransitSelectors';
 import { useAuth } from '../hooks/useTransitSelectors';
+import { logger } from '../services/logger';
 
 export const LockScreen: React.FC = () => {
   const { currentUserName, quickUnlock, isLocked } = useTransit();
@@ -59,7 +60,7 @@ export const LockScreen: React.FC = () => {
 
   const handleBiometricUnlock = async () => {
     if (!userId) {
-      console.log('Pas de userId, impossible de déverrouiller avec biométrie');
+      logger.warn('Biometric unlock: userId manquant');
       setLoading(false);
       return;
     }
@@ -91,14 +92,21 @@ export const LockScreen: React.FC = () => {
         c => c.charCodeAt(0)
       );
 
-      // Décoder allowCredentials
-      const allowCredentials = options.allowCredentials.map((cred: any) => ({
-        ...cred,
-        id: Uint8Array.from(
-          atob(cred.id.replace(/-/g, '+').replace(/_/g, '/')),
-          c => c.charCodeAt(0)
-        )
-      }));
+      // Décoder allowCredentials avec protection
+      const allowCredentials = options.allowCredentials.map((cred: any) => {
+        try {
+          return {
+            ...cred,
+            id: Uint8Array.from(
+              atob(cred.id.replace(/-/g, '+').replace(/_/g, '/')),
+              c => c.charCodeAt(0)
+            )
+          };
+        } catch (err) {
+          logger.error('Failed to decode credential ID', { error: err });
+          throw new Error('Invalid credential format');
+        }
+      });
 
       // 2. Demander au navigateur de scanner (Face ID/Touch ID)
       const credential = await navigator.credentials.get({

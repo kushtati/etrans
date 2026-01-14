@@ -177,8 +177,8 @@ export function validateEnvironment(): void {
   console.log(`   HOST: ${process.env.HOST || 'localhost'}`);
   console.log(`   DATABASE: ${process.env.DATABASE_URL ? '✅ Configurée' : '❌ Non configurée'}`);
   console.log(`   REDIS: ${process.env.REDIS_URL ? '✅ Configuré' : '⚠️  Non configuré'}`);
-  console.log(`   JWT_SECRET: ${process.env.JWT_SECRET.length} caractères`);
-  console.log(`   GEMINI_API_KEY: ${process.env.GEMINI_API_KEY.substring(0, 10)}...`);
+  console.log(`   JWT_SECRET: ✅ Configuré (${process.env.JWT_SECRET!.length >= 64 ? 'Fort' : process.env.JWT_SECRET!.length >= 32 ? 'Acceptable' : 'Faible'})`);
+  console.log(`   GEMINI_API_KEY: ✅ Configurée`);
   console.log('');
 }
 

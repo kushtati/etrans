@@ -36,7 +36,7 @@ if (fs.existsSync(envPath)) {
       
       // 🔐 SÉCURITÉ : Masquer credentials sensibles dans logs
       // Regex générique pour détecter toute variable sensible
-      const isSensitive = /(SECRET|KEY|PASSWORD|TOKEN|CREDENTIAL|AUTH|API_KEY|DATABASE|REDIS|PRIVATE)/i.test(key);
+      const isSensitive = /(SECRET|KEY|PASSWORD|TOKEN|CREDENTIAL|AUTH|API_KEY|DATABASE|REDIS|PRIVATE|URL|SMTP|WEBHOOK|STRIPE|CLIENT_SECRET|BEARER)/i.test(key);
       
       if (isSensitive) {
         console.log(`[ENV] Loaded: ${key} = [HIDDEN]`);

@@ -1,14 +1,29 @@
-# Backend-only build for Railway
-# Frontend (Vite) is deployed separately on Vercel
+# ============================================
+# 🚂 NIXPACKS CONFIG - Railway Backend Build
+# ============================================
+# 
+# Build optimisé pour backend Node.js + Prisma
+# Frontend déployé séparément sur Vercel
+#
+# ============================================
 
 [phases.setup]
-nixPkgs = ["nodejs_20", "openssl"]
+nixPkgs = ["nodejs_20", "openssl", "postgresql"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = [
+  "npm ci --omit=dev",
+  "npm install -g tsx prisma"
+]
 
 [phases.build]
-cmds = ["npx prisma generate"]
+cmds = [
+  "npx prisma generate",
+  "npm run build:server"
+]
 
 [start]
-cmd = "npx prisma migrate deploy && tsx server/index.ts"
+cmd = "npx prisma migrate deploy && npm run start:prod"
+
+[variables]
+NODE_ENV = "production"

@@ -146,11 +146,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
         
         if (IS_MOCK_MODE) {
           // ⚠️ MODE MOCK - Développement uniquement
-          console.warn(
-            '%c⚠️ MODE MOCK ACTIVÉ - DONNÉES FICTIVES',
-            'background: #ff9800; color: white; font-size: 16px; font-weight: bold; padding: 8px 16px; border-radius: 4px;'
-          );
-          console.warn('Ne JAMAIS utiliser en production!');
+          logger.warn('MODE MOCK ACTIVÉ - DONNÉES FICTIVES (dev uniquement)');
           
           // Import dynamique pour éviter le chargement en production
           const { MOCK_SHIPMENTS } = await import('../config/mockData');
@@ -427,12 +423,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
       }
 
       // API call avec apiService
-      await fetch(`/api/shipments/${shipmentId}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ arrivalDate: date })
-      });
+      await api.updateArrivalDate(shipmentId, date);
 
       logger.info('Date arrivée synchronisée', { shipmentId, date });
       
@@ -501,12 +492,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
       }
 
       // API call
-      await fetch(`/api/shipments/${shipmentId}/declaration`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ declarationNumber: sanitizedNumber, liquidationAmount: parsedAmount })
-      });
+      await api.setDeclaration(shipmentId, sanitizedNumber, parsedAmount);
 
       logger.info('Déclaration synchronisée', { shipmentId });
       
@@ -560,8 +546,8 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
       };
     }
 
-    // Sauvegarder état pour rollback (deep clone)
-    const previousShipment = JSON.parse(JSON.stringify(shipment));
+    // Sauvegarder état pour rollback (structuredClone préserve Date)
+    const previousShipment = structuredClone(shipment);
 
     // 3. Optimistic Update - Marquer liquidation comme payée
     const liquidation = (shipment.expenses || []).find(e => 
@@ -733,12 +719,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
       }
 
       // API call
-      await fetch(`/api/shipments/${id}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sanitized)
-      });
+      await api.updateShipment(id, sanitized);
 
       logger.info('Dossier synchronisé', { shipmentId: id });
     } catch (err: any) {
@@ -793,8 +774,8 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
         
         // Vérifier si WebAuthn est disponible
         if (!window.PublicKeyCredential) {
-          logger.warn('⚠️ Biométrie non disponible sur cet appareil');
-          return false; // ✅ Retourner false au lieu de throw
+          logger.warn('Biométrie non disponible sur cet appareil');
+          return false;
         }
 
         // TODO: Implémenter appel WebAuthn
@@ -803,23 +784,23 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
         // });
         
         // Pour l'instant, fallback sur password
-        logger.warn('⚠️ WebAuthn non encore implémenté, utiliser mot de passe');
+        logger.info('WebAuthn non encore implémenté, utiliser mot de passe');
         return false;
       }
     } catch (err: any) {
-      // ✅ AMÉLIORATION: Ne pas throw pour biométrie, juste logger et retourner false
-      logger.error('❌ Échec déverrouillage', { 
+      // Graceful error handling : logger + retourner false
+      logger.error('Échec déverrouillage', { 
         userId: currentUserId,
         error: err.message 
       });
       
-      // Si erreur de connexion réseau ou autre, on peut throw
-      // Mais pour biométrie non configurée, on retourne false
-      if (err.message.includes('Mot de passe incorrect')) {
-        throw err; // On throw seulement si c'est une vraie erreur auth
+      // Throw uniquement pour erreurs auth réelles (password incorrect)
+      if (err.message && err.message.includes('Mot de passe incorrect')) {
+        throw err;
       }
       
-      return false; // Sinon fallback vers password
+      // Sinon retourner false (fallback gracieux)
+      return false;
     }
     
     return false;
@@ -840,8 +821,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
   /**
    * ✅ PERFORMANCE: Mémoriser les actions pour éviter re-création
    * 
-   * Les fonctions sont stables et ne changent pas à chaque render
-   * Seuls les consumers qui utilisent `shipments` vont re-render
+   * Inclure dépendances pour éviter stale closure
    */
   const actions = useMemo(() => ({
     addDocument,
@@ -856,7 +836,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
     setRole,
     quickUnlock,
     lockSession
-  }), []); // Pas de dépendances - fonctions stables
+  }), [shipments, role, currentUserId, isOffline, isLocked]);
 
   /**
    * ✅ PERFORMANCE: Mémoriser le value complet

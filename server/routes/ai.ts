@@ -15,8 +15,10 @@
 
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import validator from 'validator';
 import { authenticateJWT } from '../middleware/auth';
 import { logAIRequest } from '../services/auditService';
+import { logger, logError } from '../config/logger';
 import { 
   getGeminiService, 
   GeminiConfigError, 
@@ -27,19 +29,32 @@ import {
 
 const router = express.Router();
 
-// 🚦 Rate Limiting : 100 requêtes/jour pour analyse
+// � CONSTANTES DE SÉCURITÉ
+const MAX_INPUT_LENGTH = 100 * 1024; // 100KB max pour documents
+const MAX_QUESTION_LENGTH = 5 * 1024; // 5KB max pour questions
+const ALLOWED_MIME_TYPES = [
+  'text/plain',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf'
+];
+
+// 🚦 Rate Limiting : 100 requêtes/jour pour analyse (per-user)
 const analyzeLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24h
   max: 100,
+  keyGenerator: (req) => req.user?.id || req.ip, // ✅ Per-user rate limiting
   message: { error: 'Limite de 100 analyses/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
   legacyHeaders: false
 });
 
-// 🚦 Rate Limiting : 50 requêtes/jour pour assistant
+// 🚦 Rate Limiting : 50 requêtes/jour pour assistant (per-user)
 const assistantLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24h
   max: 50,
+  keyGenerator: (req) => req.user?.id || req.ip, // ✅ Per-user rate limiting
   message: { error: 'Limite de 50 questions/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -56,7 +71,7 @@ router.post('/analyze', authenticateJWT, analyzeLimiter, async (req, res) => {
   try {
     const { input, mimeType } = req.body;
     
-    // Validation basique
+    // ✅ Validation stricte input
     if (!input) {
       return res.status(400).json({ error: 'Input manquant' });
     }
@@ -65,9 +80,27 @@ router.post('/analyze', authenticateJWT, analyzeLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Input doit être une chaîne' });
     }
     
+    // ✅ Protection DoS : limite taille input
+    if (input.length > MAX_INPUT_LENGTH) {
+      return res.status(413).json({ 
+        error: `Input trop volumineux (max ${MAX_INPUT_LENGTH / 1024}KB)` 
+      });
+    }
+    
+    // ✅ Validation MIME type (whitelist)
+    if (mimeType && !ALLOWED_MIME_TYPES.includes(mimeType)) {
+      return res.status(400).json({ 
+        error: 'Type de fichier non autorisé',
+        allowed: ALLOWED_MIME_TYPES
+      });
+    }
+    
+    // ✅ Sanitization XSS sur input textuel
+    const sanitizedInput = validator.escape(input);
+    
     // ✅ Utiliser GeminiService avec retry automatique et gestion d'erreurs avancée
     const geminiService = getGeminiService();
-    const result = await geminiService.analyzeTransitInfo(input, mimeType);
+    const result = await geminiService.analyzeTransitInfo(sanitizedInput, mimeType);
     
     outputLength = JSON.stringify(result).length;
     const duration = Date.now() - startTime;
@@ -98,21 +131,21 @@ router.post('/analyze', authenticateJWT, analyzeLimiter, async (req, res) => {
     if (error instanceof GeminiConfigError) {
       statusCode = 500;
       userMessage = 'Erreur configuration serveur';
-      console.error('[AI Config Error]:', errorMsg);
+      logError('AI Config Error', error, { userId: req.user?.id, endpoint: '/analyze' });
     } else if (error instanceof GeminiRateLimitError) {
       statusCode = 429;
       userMessage = 'Limite API atteinte. Veuillez réessayer dans quelques instants.';
-      console.warn('[AI Rate Limit]:', errorMsg);
+      logger.warn('AI Rate Limit reached', { error: errorMsg, userId: req.user?.id });
     } else if (error instanceof GeminiValidationError) {
       statusCode = 400;
       userMessage = 'Données invalides: ' + errorMsg;
-      console.warn('[AI Validation]:', errorMsg);
+      logger.warn('AI Validation error', { error: errorMsg, userId: req.user?.id });
     } else if (error instanceof GeminiTimeoutError) {
       statusCode = 504;
       userMessage = 'Délai d\'attente dépassé. Réessayez avec un document plus petit.';
-      console.warn('[AI Timeout]:', errorMsg);
+      logger.warn('AI Timeout', { error: errorMsg, userId: req.user?.id });
     } else {
-      console.error('[AI Unknown Error]:', error);
+      logError('AI Unknown Error', error as Error, { userId: req.user?.id });
     }
     
     // 📝 Audit log erreur
@@ -146,15 +179,30 @@ router.post('/assistant', authenticateJWT, assistantLimiter, async (req, res) =>
   try {
     const { question, sessionId } = req.body;
     
-    // Validation basique
+    // ✅ Validation stricte question
     if (!question || typeof question !== 'string') {
       return res.status(400).json({ error: 'Question invalide' });
     }
     
+    // ✅ Protection DoS : limite taille question
+    if (question.length > MAX_QUESTION_LENGTH) {
+      return res.status(413).json({ 
+        error: `Question trop longue (max ${MAX_QUESTION_LENGTH / 1024}KB)` 
+      });
+    }
+    
+    // ✅ Validation sessionId (UUID v4)
+    if (sessionId && !validator.isUUID(sessionId, 4)) {
+      return res.status(400).json({ error: 'SessionId invalide (UUID v4 requis)' });
+    }
+    
+    // ✅ Sanitization XSS
+    const sanitizedQuestion = validator.escape(question);
+    
     // ✅ Utiliser GeminiService avec support sessions conversationnelles
     const geminiService = getGeminiService();
     const result = await geminiService.askCustomsAssistant(
-      question,
+      sanitizedQuestion,
       req.user!.id,
       sessionId || null // Passer sessionId pour continuer conversation
     );
@@ -187,21 +235,21 @@ router.post('/assistant', authenticateJWT, assistantLimiter, async (req, res) =>
     if (error instanceof GeminiConfigError) {
       statusCode = 500;
       userMessage = 'Erreur configuration serveur';
-      console.error('[AI Config Error]:', errorMsg);
+      logError('AI Config Error', error, { userId: req.user?.id, endpoint: '/assistant' });
     } else if (error instanceof GeminiRateLimitError) {
       statusCode = 429;
       userMessage = 'Trop de questions. Patientez quelques instants.';
-      console.warn('[AI Rate Limit]:', errorMsg);
+      logger.warn('AI Rate Limit reached', { error: errorMsg, userId: req.user?.id });
     } else if (error instanceof GeminiValidationError) {
       statusCode = 400;
       userMessage = 'Question invalide: ' + errorMsg;
-      console.warn('[AI Validation]:', errorMsg);
+      logger.warn('AI Validation error', { error: errorMsg, userId: req.user?.id });
     } else if (error instanceof GeminiTimeoutError) {
       statusCode = 504;
       userMessage = 'Délai d\'attente dépassé. Réessayez.';
-      console.warn('[AI Timeout]:', errorMsg);
+      logger.warn('AI Timeout', { error: errorMsg, userId: req.user?.id });
     } else {
-      console.error('[AI Unknown Error]:', error);
+      logError('AI Unknown Error', error as Error, { userId: req.user?.id });
     }
     
     // 📝 Audit log erreur

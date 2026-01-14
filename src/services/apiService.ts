@@ -22,18 +22,28 @@ const retryableFetch = async (
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const response = await fetch(url, options);
+      
+      // Retry uniquement sur 5xx (erreurs serveur), pas 4xx (erreurs client)
+      if (response.status >= 500 && attempt < retries - 1) {
+        const delay = Math.pow(2, attempt) * 1000;
+        logger.warn(`Server error ${response.status}, retrying`, { url, attempt: attempt + 1, delay });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
       return response;
     } catch (err) {
+      // Erreur réseau (NetworkError, Timeout) - retry
       const isLastAttempt = attempt === retries - 1;
       
       if (isLastAttempt) {
-        logger.error('Fetch failed after retries', { url, attempt, error: err });
+        logger.error('Network error after retries', { url, attempt, error: err });
         throw err;
       }
       
       // Exponential backoff
       const delay = Math.pow(2, attempt) * 1000;
-      logger.warn(`Retry fetch attempt ${attempt + 1}/${retries}`, { url, delay });
+      logger.warn(`Network error, retrying`, { url, attempt: attempt + 1, delay });
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -63,12 +73,13 @@ const handleResponse = async (response: Response) => {
     if (response.status === 401) {
       // Token expiré ou invalide - Ne PAS rediriger automatiquement
       // L'AppLayout affichera le LoginScreen via isAuthenticated state
-      logger.warn('Unauthorized request - User not authenticated');
+      logger.warn('Authentication required', { status: 401 });
       throw new Error('Session expirée');
     }
     
     if (response.status === 403) {
-      // Error will be thrown and caught by caller with logger
+      // Logger pour audit RGPD (tentative accès non autorisé)
+      logger.warn('Access forbidden', { status: 403, error: error.message });
       throw new Error(error.message || 'Accès refusé');
     }
 
@@ -213,44 +224,59 @@ export const payLiquidation = async (shipmentId: string): Promise<any> => {
   return data;
 };
 
-// ============================================
-// AUTH API
-// ============================================
-
 /**
- * Login
- * 
- * ✅ SÉCURITÉ: Le token est stocké dans cookie httpOnly
- * Pas de stockage côté client
+ * Mettre à jour date d'arrivée
  */
-export const login = async (email: string, password: string): Promise<any> => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+export const updateArrivalDate = async (shipmentId: string, date: string): Promise<Shipment> => {
+  const response = await fetch(`${API_BASE_URL}/shipments/${shipmentId}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ arrivalDate: date }),
   });
 
   const data = await handleResponse(response);
-  
-  // ✅ Le token est automatiquement stocké dans le cookie httpOnly
-  // Pas besoin de le gérer manuellement
-  
-  return data;
+  return data.shipment;
 };
 
 /**
- * Logout
- * 
- * ✅ SÉCURITÉ: Supprime le cookie httpOnly côté serveur
+ * Enregistrer déclaration douanière
  */
-export const logout = async (): Promise<void> => {
-  await fetch(`${API_BASE_URL}/auth/logout`, {
+export const setDeclaration = async (
+  shipmentId: string, 
+  declarationNumber: string, 
+  liquidationAmount: number
+): Promise<Shipment> => {
+  const response = await fetch(`${API_BASE_URL}/shipments/${shipmentId}/declaration`, {
     method: 'POST',
     headers: getHeaders(),
     credentials: 'include',
+    body: JSON.stringify({ declarationNumber, liquidationAmount }),
   });
-  
-  // ✅ Le cookie httpOnly est supprimé côté serveur
-  // Pas de nettoyage côté client nécessaire
+
+  const data = await handleResponse(response);
+  return data.shipment;
 };
+
+/**
+ * Mettre à jour détails dossier
+ */
+export const updateShipment = async (
+  shipmentId: string, 
+  updates: Partial<Shipment>
+): Promise<Shipment> => {
+  const response = await fetch(`${API_BASE_URL}/shipments/${shipmentId}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+
+  const data = await handleResponse(response);
+  return data.shipment;
+};
+
+// ============================================
+// AUTH API - Voir authService.ts
+// ============================================
+// Login/Logout déplacés vers authService.ts pour éviter duplication

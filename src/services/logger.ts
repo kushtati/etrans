@@ -26,10 +26,20 @@ interface LogEntry {
 /**
  * Récupère userId depuis sessionStorage
  * Fallback si sessionStorage indisponible (Safari private mode)
+ * Validation UUID v4 pour éviter corruption logs
  */
 const getCurrentUserId = (): string => {
   try {
-    return sessionStorage.getItem('userId') || 'ANONYMOUS';
+    const userId = sessionStorage.getItem('userId');
+    if (!userId) return 'ANONYMOUS';
+    
+    // Valider format UUID v4 (8-4-4-4-12)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      return 'INVALID_FORMAT';
+    }
+    
+    return userId;
   } catch (err) {
     return 'UNAVAILABLE';
   }
@@ -107,6 +117,7 @@ class Logger {
 
   /**
    * Envoyer buffer complet vers backend (batch)
+   * Chunker par 100 logs max pour éviter limite sendBeacon (64KB)
    */
   private async flushBuffer(): Promise<void> {
     if (this.buffer.length === 0) return;
@@ -115,9 +126,13 @@ class Logger {
       const logs = [...this.buffer];
       this.buffer = [];
 
-      // Envoi batch
-      const blob = new Blob([JSON.stringify({ logs })], { type: 'application/json' });
-      navigator.sendBeacon('/api/logs/batch', blob);
+      // Chunker par paquets de 100 logs
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < logs.length; i += CHUNK_SIZE) {
+        const chunk = logs.slice(i, i + CHUNK_SIZE);
+        const blob = new Blob([JSON.stringify({ logs: chunk })], { type: 'application/json' });
+        navigator.sendBeacon('/api/logs/batch', blob);
+      }
     } catch (err) {
       // Fail silently
     }

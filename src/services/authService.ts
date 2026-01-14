@@ -19,20 +19,7 @@ export interface AuthResponse {
   tfaMethod?: 'sms' | 'email' | 'app';
 }
 
-export interface RateLimitInfo {
-  attempts: number;
-  lockoutUntil: number | null;
-  requiresCaptcha: boolean;
-}
-
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-const MAX_ATTEMPTS = 3;
-const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
-
-/**
- * Rate limiting storage key generator
- */
-const getRateLimitKey = (email: string) => `auth_attempts_${email.toLowerCase()}`;
 
 /**
  * Hash password using SHA-256 (client-side pre-hashing)
@@ -86,8 +73,15 @@ export const authService = {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Identifiants invalides');
+        const error = await response.json().catch(() => ({ message: 'Erreur serveur' }));
+        
+        // Préserver contexte HTTP pour meilleure UX
+        const errorWithStatus: any = new Error(
+          error.message || 
+          (response.status === 429 ? 'Trop de tentatives. Réessayez plus tard.' : 'Identifiants invalides')
+        );
+        errorWithStatus.status = response.status;
+        throw errorWithStatus;
       }
 
       const data: AuthResponse = await response.json();

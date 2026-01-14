@@ -55,7 +55,7 @@ class OfflineQueueService {
     payload: any
   ): Promise<string> {
     const action: QueuedAction = {
-      id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: crypto.randomUUID(),
       type,
       payload,
       timestamp: Date.now(),
@@ -123,19 +123,16 @@ class OfflineQueueService {
 
           if (action.retries >= this.maxRetries) {
             // Max retries atteint - Notifier utilisateur avant suppression
-            logger.error('Action failed after max retries', {
+            logger.error('Action failed after max retries - DATA LOSS', {
               id: action.id,
               type: action.type,
               retries: action.retries,
-              error: err.message
+              error: err.message,
+              payload: action.payload
             });
             
             // TODO: Afficher notification utilisateur (toast/alert)
             // TODO: Sauvegarder dans table "failed_actions" pour review manuel
-            console.error(
-              `⚠️ Action "${action.type}" échouée après ${this.maxRetries} tentatives.`,
-              'Données perdues:', action.payload
-            );
 
             await indexedDB.removeFromQueue(action.id);
           } else {
@@ -198,11 +195,7 @@ class OfflineQueueService {
         break;
 
       case 'PAY_LIQUIDATION':
-        await fetch(`/api/shipments/${action.payload.shipmentId}/pay-liquidation`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' }
-        });
+        await api.payLiquidation(action.payload.shipmentId);
         break;
 
       default:

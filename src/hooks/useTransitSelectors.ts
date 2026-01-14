@@ -30,12 +30,12 @@ export const useShipments = (): Shipment[] => {
   
   try {
     if (!context || !context.shipments) {
-      logger.error('useShipments: context invalide');
+      logger.warn('useShipments: context invalide - retourne tableau vide');
       return [];
     }
     return context.shipments;
   } catch (error) {
-    logger.error('useShipments: erreur', error);
+    logger.error('useShipments: erreur', { error });
     return [];
   }
 };
@@ -52,14 +52,16 @@ export const useShipments = (): Shipment[] => {
 export const useShipmentById = (shipmentId: string): Shipment | undefined => {
   const { shipments } = useContext(TransitContext);
   
-  try {
-    if (!shipments || !Array.isArray(shipments)) return undefined;
-    // find() est O(n) léger, pas besoin useMemo (overhead inutile)
-    return shipments.find(s => s.id === shipmentId);
-  } catch (error) {
-    logger.error('useShipmentById: erreur', { shipmentId, error });
-    return undefined;
-  }
+  // Cache avec useMemo pour éviter find() O(n) à chaque render
+  return useMemo(() => {
+    try {
+      if (!shipments || !Array.isArray(shipments)) return undefined;
+      return shipments.find(s => s.id === shipmentId);
+    } catch (error) {
+      logger.error('useShipmentById: erreur', { shipmentId, error });
+      return undefined;
+    }
+  }, [shipments, shipmentId]);
 };
 
 /**

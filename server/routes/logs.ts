@@ -9,7 +9,8 @@
 
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { logger as serverLogger } from '../services/logger';
+import validator from 'validator';
+import { logger as serverLogger, logError } from '../config/logger';
 
 const router = Router();
 
@@ -86,7 +87,7 @@ router.post('/', logsLimiter, async (req: Request, res: Response) => {
 
   } catch (error) {
     // Fail silently (ne pas casser le frontend si logging échoue)
-    console.error('[LOGS] Error processing frontend log:', error);
+    logError('Frontend log processing error', error as Error, { ip: req.ip });
     res.status(500).json({ error: 'Log processing failed' });
   }
 });
@@ -101,6 +102,14 @@ router.post('/batch', logsLimiter, async (req: Request, res: Response) => {
 
     if (!Array.isArray(logs) || logs.length === 0) {
       return res.status(400).json({ error: 'Invalid batch format' });
+    }
+    
+    // ✅ Protection DoS : max 100 logs par batch
+    if (logs.length > 100) {
+      return res.status(413).json({ 
+        error: 'Batch trop volumineux (max 100 logs)',
+        received: logs.length
+      });
     }
 
     // Traiter chaque log du batch
@@ -138,7 +147,7 @@ router.post('/batch', logsLimiter, async (req: Request, res: Response) => {
     res.status(204).send();
 
   } catch (error) {
-    console.error('[LOGS] Error processing batch:', error);
+    logError('Frontend batch processing error', error as Error, { ip: req.ip });
     res.status(500).json({ error: 'Batch processing failed' });
   }
 });

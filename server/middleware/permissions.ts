@@ -7,6 +7,8 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { Permission, hasPermissionFromToken } from '../utils/permissions';
+import { logSecurity, logError } from '../config/logger';
+import { prisma } from '../config/prisma';
 
 // Types déjà définis dans server/types/express.d.ts
 // Pas besoin de redéclarer
@@ -37,13 +39,12 @@ export const requirePermission = (permission: Permission) => {
 
     if (!hasPermission) {
       // Log la tentative d'accès non autorisée
-      console.warn('[SECURITY] Permission denied:', {
+      logSecurity('PERMISSION_DENIED', {
         userId: req.user.id,
         email: req.user.email,
         role: req.user.role,
         userPermissions,
         requiredPermission: permission,
-        timestamp: new Date().toISOString(),
         path: req.path,
         method: req.method,
         ip: req.ip,
@@ -81,7 +82,7 @@ export const requireAnyPermission = (permissions: Permission[]) => {
     );
 
     if (!hasAny) {
-      console.warn('[SECURITY] No matching permission:', {
+      logSecurity('NO_MATCHING_PERMISSION', {
         userId: req.user.id,
         requiredPermissions: permissions,
         path: req.path,
@@ -163,8 +164,6 @@ export const requireOwnershipOrPermission = (permission: Permission) => {
 
     try {
       // Vérifier ownership avec Prisma
-      const { prisma } = await import('../config/prisma');
-      
       const shipment = await prisma.shipment.findUnique({
         where: { id: shipmentId },
         select: { createdById: true },
@@ -183,11 +182,10 @@ export const requireOwnershipOrPermission = (permission: Permission) => {
       }
 
       // Accès refusé
-      console.warn('[SECURITY] Ownership denied:', {
+      logSecurity('OWNERSHIP_DENIED', {
         userId,
         shipmentId,
         createdById: shipment.createdById,
-        timestamp: new Date().toISOString(),
       });
 
       return res.status(403).json({
@@ -196,7 +194,11 @@ export const requireOwnershipOrPermission = (permission: Permission) => {
       });
       
     } catch (error) {
-      console.error('[SECURITY] Ownership check error:', error);
+      logError('Ownership check error', error as Error, {
+        userId: req.user?.id,
+        shipmentId,
+        path: req.path
+      });
       return res.status(500).json({
         success: false,
         message: 'Erreur vérification ownership',

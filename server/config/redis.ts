@@ -5,6 +5,7 @@
  */
 
 import Redis from 'ioredis';
+import { logger, logError } from './logger';
 
 // ============================================
 // IN-MEMORY FALLBACK
@@ -13,6 +14,7 @@ import Redis from 'ioredis';
 class InMemoryStore {
   private store: Map<string, { value: string; expiry?: number }> = new Map();
   private cleanupInterval?: NodeJS.Timeout;
+  private readonly MAX_KEYS = 10000; // Limite 10k clés
 
   constructor() {
     // Nettoyage automatique toutes les minutes
@@ -44,6 +46,18 @@ class InMemoryStore {
   }
 
   async set(key: string, value: string, ttl?: number): Promise<void> {
+    // Nettoyer si limite atteinte
+    if (this.store.size >= this.MAX_KEYS) {
+      this.cleanup();
+      
+      // Si toujours trop grand, supprimer les plus vieux
+      if (this.store.size >= this.MAX_KEYS) {
+        const oldest = Array.from(this.store.keys())[0];
+        this.store.delete(oldest);
+        logger.warn('InMemoryStore: MAX_KEYS reached, removing oldest key', { size: this.store.size });
+      }
+    }
+    
     const expiry = ttl ? Date.now() + (ttl * 1000) : undefined;
     this.store.set(key, { value, expiry });
   }
@@ -86,7 +100,7 @@ let connectionAttempted = false;
 export async function initRedis(): Promise<void> {
   // Éviter tentatives multiples
   if (connectionAttempted) {
-    console.log('[REDIS] Already initialized');
+    logger.info('Redis already initialized');
     return;
   }
   
@@ -99,14 +113,21 @@ export async function initRedis(): Promise<void> {
     // Railway fournit redis://default:password@host:port
     try {
       const url = new URL(process.env.REDIS_URL);
+      
+      // Valider protocole
+      if (!['redis:', 'rediss:'].includes(url.protocol)) {
+        throw new Error(`Invalid Redis protocol: ${url.protocol}`);
+      }
+      
       redisConfig = {
         host: url.hostname,
         port: parseInt(url.port) || 6379,
         password: url.password || undefined,
+        tls: url.protocol === 'rediss:' ? {} : undefined,
       };
-      console.log(`[REDIS] Using REDIS_URL: ${url.hostname}:${url.port}`);
+      logger.info('Using REDIS_URL', { host: url.hostname, port: url.port, tls: url.protocol === 'rediss:' });
     } catch (e) {
-      console.error('[REDIS] Invalid REDIS_URL format:', e);
+      logError('Invalid REDIS_URL format', e as Error);
     }
   } else {
     // Fallback aux variables séparées
@@ -119,19 +140,19 @@ export async function initRedis(): Promise<void> {
 
   // En développement, sauter Redis si pas disponible
   if (process.env.NODE_ENV === 'development') {
-    console.log('[REDIS] 🔧 Development mode - Trying Redis...');
+    logger.info('Development mode - Trying Redis...');
     
     try {
       const testClient = new Redis({
         ...redisConfig,
-        maxRetriesPerRequest: 1, // ✅ 1 seul essai
-        retryStrategy: () => null, // ✅ Pas de retry automatique
-        connectTimeout: 5000, // ✅ Timeout 5s (évite faux positifs)
-        lazyConnect: true, // ✅ Connexion manuelle
-        enableOfflineQueue: false, // ✅ Pas de queue si offline
+        maxRetriesPerRequest: 1, // 1 seul essai
+        retryStrategy: () => null, // Pas de retry automatique
+        connectTimeout: 10000, // Timeout 10s (plus réaliste)
+        lazyConnect: true, // Connexion manuelle
+        enableOfflineQueue: false, // Pas de queue si offline
       });
 
-      // ✅ CRITIQUE : Capturer TOUTES les erreurs
+      // CRITIQUE : Capturer TOUTES les erreurs
       testClient.on('error', (err) => {
         // Ne rien faire - on gère en dessous
       });
@@ -141,12 +162,12 @@ export async function initRedis(): Promise<void> {
       
       // Si on arrive ici, Redis fonctionne
       redisClient = testClient;
-      console.log('[REDIS] ✅ Connected successfully');
+      logger.info('Redis connected successfully');
       return;
       
     } catch (error: any) {
       // Redis non disponible - fallback silencieux
-      console.log('[REDIS] ⚠️  Redis not available, using memory fallback');
+      logger.warn('Redis not available, using memory fallback');
       redisClient = null;
       isUsingFallback = true;
       memoryFallback = new InMemoryStore();
@@ -156,35 +177,51 @@ export async function initRedis(): Promise<void> {
 
   // En production, Redis OBLIGATOIRE
   if (process.env.NODE_ENV === 'production') {
-    console.log('[REDIS] 🚀 Production mode - Redis REQUIRED');
+    logger.info('Production mode - Redis REQUIRED');
+    
+    // Compteur erreurs pour monitoring
+    let errorCount = 0;
+    const MAX_ERRORS_BEFORE_ALERT = 10;
     
     const client = new Redis({
       ...redisConfig,
-      maxRetriesPerRequest: 3,
+      tls: redisConfig.tls || {}, // TLS par défaut en production
+      maxRetriesPerRequest: 10, // Plus tolérant
       retryStrategy: (times: number) => {
-        if (times > 10) {
-          console.error('[REDIS] ❌ Max retries exceeded - CRITICAL');
+        const delay = Math.min(times * 200, 5000); // Max 5s entre essais
+        
+        if (times > 20) {
+          logger.error('Redis max retries exceeded - CRITICAL');
           process.exit(1); // Arrêt forcé en prod si Redis down
         }
-        return Math.min(times * 100, 3000);
+        
+        logger.warn('Redis retry attempt', { attempt: times, delay });
+        return delay;
       },
       enableOfflineQueue: false,
     });
 
-    // Gestion erreurs production
+    // Gestion erreurs production avec monitoring
     client.on('error', (err) => {
-      console.error('[REDIS] ❌ Production error:', err.message);
+      errorCount++;
+      logError('Redis production error', err, { count: errorCount });
+      
+      if (errorCount >= MAX_ERRORS_BEFORE_ALERT) {
+        // TODO: Envoyer alerte (email, Slack, PagerDuty)
+        logger.error('ALERT: Redis error threshold exceeded', { count: errorCount });
+      }
     });
 
     client.on('ready', () => {
-      console.log('[REDIS] ✅ Production ready');
+      logger.info('Redis production ready');
+      errorCount = 0; // Reset compteur si reconnexion
     });
 
     try {
       await client.connect();
       redisClient = client;
     } catch (error: any) {
-      console.error('[REDIS] ❌ CRITICAL: Cannot connect in production');
+      logError('CRITICAL: Cannot connect in production', error);
       throw new Error('Redis connection required in production');
     }
   }
@@ -201,14 +238,14 @@ export const redis = {
     }
     
     if (!redisClient) {
-      console.warn('[REDIS] Client not initialized');
+      logger.warn('Redis client not initialized');
       return null;
     }
     
     try {
       return await redisClient.get(key);
     } catch (error: any) {
-      console.error('[REDIS] Get error:', error.message);
+      logError('Redis get error', error);
       return null;
     }
   },
@@ -219,7 +256,7 @@ export const redis = {
     }
     
     if (!redisClient) {
-      console.warn('[REDIS] Client not initialized');
+      logger.warn('Redis client not initialized');
       return;
     }
     
@@ -230,7 +267,7 @@ export const redis = {
         await redisClient.set(key, value);
       }
     } catch (error: any) {
-      console.error('[REDIS] Set error:', error.message);
+      logError('Redis set error', error);
     }
   },
 
@@ -244,7 +281,7 @@ export const redis = {
     try {
       await redisClient.del(key);
     } catch (error: any) {
-      console.error('[REDIS] Del error:', error.message);
+      logError('Redis del error', error);
     }
   },
 
@@ -258,7 +295,7 @@ export const redis = {
     try {
       return await redisClient.incr(key);
     } catch (error: any) {
-      console.error('[REDIS] Incr error:', error.message);
+      logError('Redis incr error', error);
       return 0;
     }
   },
@@ -273,7 +310,7 @@ export const redis = {
     try {
       await redisClient.expire(key, seconds);
     } catch (error: any) {
-      console.error('[REDIS] Expire error:', error.message);
+      logError('Redis expire error', error);
     }
   },
 
@@ -294,13 +331,13 @@ export const redis = {
   }
 };
 
-// ✅ Cleanup à l'arrêt
+// Cleanup à l'arrêt
 process.on('SIGTERM', async () => {
-  console.log('[REDIS] Graceful shutdown...');
+  logger.info('Redis graceful shutdown...');
   await redis.disconnect();
 });
 
 process.on('SIGINT', async () => {
-  console.log('[REDIS] Graceful shutdown...');
+  logger.info('Redis graceful shutdown...');
   await redis.disconnect();
 });

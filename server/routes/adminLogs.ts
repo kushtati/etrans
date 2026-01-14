@@ -8,7 +8,9 @@
  */
 
 import { Router, Request, Response } from 'express';
+import validator from 'validator';
 import { authenticateJWT } from '../middleware/auth';
+import { logError } from '../config/logger';
 import { 
   getGlobalStats, 
   cleanOldLogs, 
@@ -36,7 +38,12 @@ const requireAdmin = (req: Request, res: Response, next: Function) => {
  */
 router.get('/stats', authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const days = parseInt(req.query.days as string) || 7;
+    let days = parseInt(req.query.days as string) || 7;
+    
+    // ✅ Validation days (max 90)
+    if (!validator.isInt(String(days), { min: 1, max: 90 })) {
+      days = 7;
+    }
     
     const stats = await getGlobalStats(days);
     
@@ -47,7 +54,7 @@ router.get('/stats', authenticateJWT, requireAdmin, async (req: Request, res: Re
     });
     
   } catch (error) {
-    console.error('[ADMIN] Stats error:', error);
+    logError('Admin stats error', error as Error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to get stats' });
   }
 });
@@ -69,7 +76,7 @@ router.post('/cleanup', authenticateJWT, requireAdmin, async (req: Request, res:
     });
     
   } catch (error) {
-    console.error('[ADMIN] Cleanup error:', error);
+    logError('Admin cleanup error', error as Error, { userId: req.user?.id });
     res.status(500).json({ error: 'Cleanup failed' });
   }
 });
@@ -80,7 +87,12 @@ router.post('/cleanup', authenticateJWT, requireAdmin, async (req: Request, res:
  */
 router.get('/audit', authenticateJWT, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 100;
+    let limit = parseInt(req.query.limit as string) || 100;
+    
+    // ✅ Validation limit (max 1000)
+    if (!validator.isInt(String(limit), { min: 1, max: 1000 })) {
+      limit = 100;
+    }
     
     const logs = await getRecentAuditLogs(limit);
     
@@ -91,7 +103,7 @@ router.get('/audit', authenticateJWT, requireAdmin, async (req: Request, res: Re
     });
     
   } catch (error) {
-    console.error('[ADMIN] Audit logs error:', error);
+    logError('Admin audit logs error', error as Error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to get audit logs' });
   }
 });

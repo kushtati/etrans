@@ -9,7 +9,7 @@
  */
 
 import { Role, ShipmentStatus } from '../types';
-import { logger } from '../services/logger';
+import { logger, logSecurity } from '../config/logger';
 
 // ============================================
 // PERMISSIONS DEFINITIONS
@@ -207,14 +207,16 @@ export interface PermissionCheck {
   context?: string;
 }
 
-const permissionChecks: PermissionCheck[] = [];
-const MAX_AUDIT_LOGS = 1000; // Limite pour éviter memory leak
+// ⚠️ DÉSACTIVÉ : Memory leak en production (array global non nettoyé)
+// Utiliser logSecurity() directement pour audit trail avec rotation Winston
+// const permissionChecks: PermissionCheck[] = [];
+// const MAX_AUDIT_LOGS = 1000;
 
 /**
  * Log une vérification de permission (pour audit)
  * 
- * ⚠️ IMPORTANT : Logs stockés en mémoire (perte au restart).
- * Production : Envoyer vers backend /api/audit-logs via logger.
+ * Utilise logSecurity() avec rotation quotidienne Winston.
+ * Les logs sont persistés dans logs/security-*.log avec rétention 90j.
  * 
  * @param role - Rôle vérifié
  * @param permission - Permission vérifiée
@@ -227,39 +229,35 @@ export const logPermissionCheck = (
   granted: boolean,
   context?: string
 ): void => {
-  const check: PermissionCheck = {
-    timestamp: new Date(),
-    role,
-    permission,
-    granted,
-    context,
-  };
-  
-  permissionChecks.push(check);
-  
-  // Rotation FIFO si dépassement limite
-  if (permissionChecks.length > MAX_AUDIT_LOGS) {
-    permissionChecks.shift(); // Supprimer le plus ancien
-  }
-  
-  // En production: envoyer vers service de logging backend
+  // En production: logSecurity avec rotation Winston
   if (!granted) {
-    logger.warn('PERMISSION_DENIED', {
+    logSecurity('PERMISSION_DENIED', {
       role,
       permission,
       context,
-      timestamp: check.timestamp.toISOString()
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    // Log succès en debug uniquement
+    logger.debug('Permission granted', {
+      role,
+      permission,
+      context
     });
   }
 };
 
 /**
  * Récupère l'historique des vérifications de permissions
+ * 
+ * ⚠️ DÉSACTIVÉ : Utiliser query logs/security-*.log ou base de données audit
+ * 
  * @param limit - Nombre max de résultats
- * @returns Liste des vérifications
+ * @returns Liste vide (fonctionnalité désactivée)
  */
 export const getPermissionAuditLog = (limit: number = 100): PermissionCheck[] => {
-  return permissionChecks.slice(-limit);
+  logger.warn('getPermissionAuditLog called but feature disabled - use logs/security-*.log');
+  return [];
 };
 
 // ============================================
@@ -322,7 +320,7 @@ export const canUpdateStatus = (
   const hasPermission = allowedStatuses.includes(newStatus);
   
   if (!hasPermission) {
-    logger.warn('Status change denied - role lacks permission', {
+    logSecurity('STATUS_CHANGE_DENIED', {
       role,
       currentStatus,
       newStatus,
@@ -384,7 +382,7 @@ export const isValidStatusTransition = (
   const isValid = allowedTransitions.includes(newStatus);
   
   if (!isValid) {
-    logger.warn('Invalid status transition', {
+    logger.debug('Invalid status transition', {
       currentStatus,
       newStatus,
       allowedTransitions
@@ -469,7 +467,7 @@ export const canCreateShipment = (role: Role): boolean => {
   const hasCreatePermission = allowedRoles.includes(role);
   
   if (!hasCreatePermission) {
-    logger.warn('Shipment creation denied - role lacks permission', {
+    logSecurity('SHIPMENT_CREATE_DENIED', {
       role,
       allowedRoles
     });
@@ -489,7 +487,7 @@ export const canDeleteShipment = (role: Role): boolean => {
   const hasDeletePermission = role === Role.DIRECTOR;
   
   if (!hasDeletePermission) {
-    logger.warn('Shipment deletion denied - only director allowed', { role });
+    logSecurity('SHIPMENT_DELETE_DENIED', { role });
   }
   
   return hasDeletePermission;

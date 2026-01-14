@@ -22,6 +22,7 @@ import { redis } from '../config/redis';
 import { prisma } from '../config/prisma';
 import { authenticateJWT } from '../middleware/auth';
 import crypto from 'crypto';
+import { logger, logSecurity, logError } from '../config/logger';
 
 // Re-export pour faciliter les imports
 export { authenticateJWT } from '../middleware/auth';
@@ -32,14 +33,38 @@ const router = express.Router();
 // CONFIGURATION
 // ============================================
 
-// 🔐 SÉCURITÉ CRITIQUE : JWT_SECRET doit TOUJOURS être défini
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET || JWT_SECRET.length < 32) {
-  console.error('🚨 CRITICAL SECURITY ERROR: JWT_SECRET must be set in environment variables');
-  console.error('Generate a secure secret with: openssl rand -base64 32');
-  console.error('Then set it in .env.server: JWT_SECRET=<your_secret>');
-  process.exit(1); // CRASH - Ne JAMAIS démarrer sans secret
-}
+/**
+ * Validation robuste JWT_SECRET
+ */
+const validateJWTSecret = (secret: string | undefined): void => {
+  if (!secret) {
+    logger.error('JWT_SECRET not defined in environment');
+    logger.error('Generate secure secret: openssl rand -base64 32');
+    process.exit(1);
+  }
+  
+  if (secret.length < 32) {
+    logger.error('JWT_SECRET too short (minimum 32 characters)');
+    process.exit(1);
+  }
+  
+  // Vérifier entropie (caractères uniques)
+  const uniqueChars = new Set(secret).size;
+  if (uniqueChars < 10) {
+    logger.error('JWT_SECRET has insufficient entropy (too repetitive)');
+    logger.error('Generate secure secret: openssl rand -base64 32');
+    process.exit(1);
+  }
+  
+  // Avertir si patterns faibles
+  const weakPatterns = ['test', 'dev', 'secret', 'password', '123', 'abc'];
+  if (weakPatterns.some(p => secret.toLowerCase().includes(p))) {
+    logger.warn('JWT_SECRET contains weak pattern, consider regenerating');
+  }
+};
+
+const JWT_SECRET = process.env.JWT_SECRET!;
+validateJWTSecret(JWT_SECRET);
 const JWT_EXPIRES_IN = '24h';
 const BCRYPT_ROUNDS = 12; // Coût hachage (12 = ~250ms)
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -49,10 +74,10 @@ const LOCK_DURATION_MINUTES = 30;
 // RATE LIMITING
 // ============================================
 
-// Rate limiter global pour /auth/* (500 requêtes/15min - augmenté pour dev)
+// Rate limiter global pour /auth/* (strict en production)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Augmenté pour éviter le blocage en dev
+  max: process.env.NODE_ENV === 'development' ? 500 : 100, // Strict en production
   message: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -123,7 +148,7 @@ const isAccountLocked = async (email: string): Promise<boolean> => {
     
     return false;
   } catch (error) {
-    console.error('[AUTH] Error parsing login attempts:', error);
+    logger.error('Error parsing login attempts', { error });
     return false;
   }
 };
@@ -178,17 +203,7 @@ const generateJWT = (user: User): string => {
   );
 };
 
-/**
- * Log d'audit sécurisé
- */
-const auditLog = (action: string, details: any): void => {
-  // En production : envoyer vers service de logging (Datadog, ELK, etc.)
-  console.log('[AUDIT]', {
-    action,
-    timestamp: new Date().toISOString(),
-    ...details
-  });
-};
+// auditLog supprimé - utiliser logger.info/warn/error directement
 
 // ============================================
 // ROUTE: CSRF TOKEN
@@ -196,29 +211,61 @@ const auditLog = (action: string, details: any): void => {
 
 /**
  * GET /api/auth/csrf-token
- * Retourne un token CSRF pour protéger les requêtes POST/PUT/DELETE
- * 
- * Note: Pour une vraie app en production, utiliser le package 'csurf' 
- * et valider le token côté backend. Cette implémentation simple génère
- * juste un token aléatoire pour satisfaire le frontend.
+ * Génère et stocke un token CSRF dans Redis pour validation
  */
-router.get('/csrf-token', (req: Request, res: Response) => {
+router.get('/csrf-token', async (req: Request, res: Response) => {
   try {
-    // Générer un token aléatoire sécurisé (32 bytes = 256 bits)
     const token = crypto.randomBytes(32).toString('hex');
+    const sessionId = req.user?.id || req.ip || 'anonymous';
     
-    // En production, stocker ce token dans la session/redis pour validation
-    // et le valider sur les routes protégées
+    // Stocker dans Redis avec TTL 1h
+    await redis.set(`csrf:${sessionId}`, token, 3600);
     
     res.json({ token });
-  } catch (error: any) {
-    console.error('CSRF token generation failed:', error);
+  } catch (error) {
+    logError('CSRF token generation failed', error as Error);
     res.status(500).json({ 
-      error: 'Erreur lors de la génération du token CSRF',
-      message: error.message 
+      success: false,
+      message: 'Erreur génération token CSRF'
     });
   }
 });
+
+/**
+ * Middleware validation CSRF
+ */
+const validateCSRF = async (req: Request, res: Response, next: NextFunction) => {
+  const csrfToken = req.headers['x-csrf-token'] as string;
+  const sessionId = req.user?.id || req.ip || 'anonymous';
+  
+  if (!csrfToken) {
+    logSecurity('CSRF_TOKEN_MISSING', { sessionId, ip: req.ip });
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Token CSRF manquant' 
+    });
+  }
+  
+  try {
+    const storedToken = await redis.get(`csrf:${sessionId}`);
+    
+    if (csrfToken !== storedToken) {
+      logSecurity('CSRF_VALIDATION_FAILED', { sessionId, ip: req.ip });
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Token CSRF invalide' 
+      });
+    }
+    
+    next();
+  } catch (error) {
+    logError('CSRF validation error', error as Error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Erreur validation CSRF' 
+    });
+  }
+};
 
 // ============================================
 // ROUTE: LOGIN
@@ -226,11 +273,11 @@ router.get('/csrf-token', (req: Request, res: Response) => {
 
 router.post(
   '/login',
+  validateCSRF,
   loginLimiter,
   [
     body('email').isEmail().normalizeEmail(),
-    body('password').isLength({ min: 8 }),
-    body('isHashed').optional().isBoolean()
+    body('password').isLength({ min: 8 })
   ],
   async (req: Request, res: Response) => {
     try {
@@ -244,42 +291,39 @@ router.post(
         });
       }
 
-      const { email, password, isHashed } = req.body;
+      const { email, password } = req.body;
       const ip = req.ip;
       const userAgent = req.get('user-agent') || 'Unknown';
 
       // 2. Vérifier verrouillage compte
       if (await isAccountLocked(email)) {
-        auditLog('LOGIN_BLOCKED_LOCKED_ACCOUNT', { email, ip });
+        logger.warn('Login blocked - account locked', { email, ip });
         return res.status(429).json({
           success: false,
           message: 'Compte temporairement verrouillé. Réessayez plus tard.'
         });
       }
 
-      // 3. Récupérer utilisateur depuis base de données
-      // TODO: Remplacer par vraie requête DB
+      // 3. Récupérer utilisateur (avec timing protection intégré)
       const user = await findUserByEmail(email);
 
-      if (!user) {
-        await recordLoginAttempt(email, false);
-        auditLog('LOGIN_FAILED_USER_NOT_FOUND', { email, ip });
-        
-        // Message générique (ne pas révéler si user existe)
-        return res.status(401).json({
-          success: false,
-          message: 'Identifiants invalides'
-        });
+      // 4. Vérifier mot de passe (timing constant)
+      let passwordMatch = false;
+      if (user) {
+        passwordMatch = await bcrypt.compare(password, user.password);
       }
+      // Si user null, findUserByEmail a déjà fait dummy hash
 
-      // 4. Vérifier mot de passe
-      // Note: Le mot de passe est envoyé en clair via HTTPS
-      // bcrypt compare le plaintext avec le hash stocké
-      const passwordMatch = await bcrypt.compare(password, user.password);
+      // 5. Enregistrer tentative
+      await recordLoginAttempt(email, passwordMatch && !!user);
 
-      if (!passwordMatch) {
-        await recordLoginAttempt(email, false);
-        auditLog('LOGIN_FAILED_WRONG_PASSWORD', { email, ip });
+      // 6. Rejeter si échec (timing constant)
+      if (!user || !passwordMatch) {
+        logger.warn('Login failed', { 
+          email, 
+          ip,
+          reason: !user ? 'user_not_found' : 'wrong_password'
+        });
         
         return res.status(401).json({
           success: false,
@@ -287,7 +331,7 @@ router.post(
         });
       }
 
-      // 5. Vérifier si 2FA activé
+      // 7. Vérifier si 2FA activé
       if (user.twoFactorEnabled) {
         // Générer token temporaire pour étape 2FA
         const tempToken = jwt.sign(
@@ -303,37 +347,34 @@ router.post(
         });
       }
 
-      // 6. Succès - Générer JWT
-      await recordLoginAttempt(email, true);
-
+      // 8. Succès - Générer JWT
       const token = generateJWT(user);
 
       // Mettre à jour dernière connexion
       await updateLastLogin(user.id);
 
-      auditLog('LOGIN_SUCCESS', { 
+      logger.info('Login success', { 
         userId: user.id, 
         email, 
         role: user.role,
-        ip,
-        userAgent
+        ip
       });
 
-      // 7. Définir cookie httpOnly (sécurisé)
+      // 9. Définir cookie httpOnly (sécurisé)
       res.cookie('auth_token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // HTTPS uniquement en prod
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax', // ✅ 'lax' en dev pour cross-port
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 24 * 60 * 60 * 1000, // 24h
-        path: '/', // ✅ Cookie disponible sur tous les chemins
-        domain: process.env.NODE_ENV === 'development' ? 'localhost' : undefined // ✅ Partage entre ports localhost
+        path: '/',
+        domain: process.env.NODE_ENV === 'development' ? 'localhost' : undefined
       });
 
-      // 8. Réponse
+      // 10. Réponse
       res.json({
         success: true,
         twoFactorRequired: false,
-        token, // Pour stockage côté client si nécessaire
+        token,
         user: {
           id: user.id,
           email: user.email,
@@ -341,9 +382,8 @@ router.post(
         }
       });
 
-    } catch (error: any) {
-      console.error('Login error:', error);
-      auditLog('LOGIN_ERROR', { error: error.message });
+    } catch (error) {
+      logError('Login error', error as Error, { ip: req.ip });
       
       res.status(500).json({
         success: false,
@@ -404,7 +444,7 @@ router.post(
       });
 
       if (!verified) {
-        auditLog('2FA_FAILED', { userId: user.id });
+        logger.warn('2FA verification failed', { userId: user.id });
         return res.status(401).json({
           success: false,
           message: 'Code 2FA invalide'
@@ -414,7 +454,7 @@ router.post(
       // 4. Succès - Générer JWT final
       const token = generateJWT(user);
 
-      auditLog('2FA_SUCCESS', { userId: user.id });
+      logger.info('2FA verification success', { userId: user.id });
 
       res.cookie('auth_token', token, {
         httpOnly: true,
@@ -435,8 +475,8 @@ router.post(
         }
       });
 
-    } catch (error: any) {
-      console.error('2FA verification error:', error);
+    } catch (error) {
+      logError('2FA verification error', error as Error);
       res.status(500).json({
         success: false,
         message: 'Erreur serveur'
@@ -469,7 +509,7 @@ router.post('/enable-2fa', authenticateJWT, async (req: Request, res: Response) 
     // 3. Sauvegarder secret (temporairement, confirmé après vérification)
     await saveTempTwoFactorSecret(userId, secret.base32);
 
-    auditLog('2FA_SETUP_INITIATED', { userId });
+    logger.info('2FA setup initiated', { userId });
 
     res.json({
       success: true,
@@ -478,7 +518,7 @@ router.post('/enable-2fa', authenticateJWT, async (req: Request, res: Response) 
     });
 
   } catch (error) {
-    console.error('2FA setup error:', error);
+    logError('2FA setup error', error as Error);
     res.status(500).json({
       success: false,
       message: 'Erreur configuration 2FA'
@@ -490,7 +530,7 @@ router.post('/enable-2fa', authenticateJWT, async (req: Request, res: Response) 
 // ROUTE: LOGOUT
 // ============================================
 
-router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
+router.post('/logout', authenticateJWT, validateCSRF, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Non authentifié' });
@@ -510,19 +550,19 @@ router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
           // Calculer TTL restant jusqu'à expiration naturelle du token
           const ttl = decoded.exp - Math.floor(Date.now() / 1000);
           
-          // Blacklist token jusqu'à expiration (pas plus longtemps)
+          // Hash token pour économiser mémoire Redis
           if (ttl > 0) {
-            await redis.set(`revoked:${token}`, '1', ttl);
-            console.log(`[AUTH] Token blacklisted for ${ttl}s`);
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            await redis.set(`revoked:${tokenHash}`, '1', ttl);
+            logger.info('Token blacklisted', { userId, ttl });
           }
         }
       } catch (error) {
-        console.warn('[AUTH] Token blacklist failed (non-critical):', (error as Error).message);
+        logger.warn('Token blacklist failed (non-critical)', { error });
       }
     }
 
-    // Invalider token (en prod: blacklist Redis)
-    auditLog('LOGOUT', { userId });
+    logger.info('User logged out', { userId });
 
     // Supprimer cookie
     res.clearCookie('auth_token');
@@ -533,6 +573,7 @@ router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
     });
 
   } catch (error) {
+    logError('Logout error', error as Error);
     res.status(500).json({
       success: false,
       message: 'Erreur déconnexion'
@@ -553,28 +594,17 @@ router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
  */
 router.post('/unlock', authenticateJWT, async (req: Request, res: Response) => {
   try {
-    const { password } = req.body;
+    const { password, biometricVerified } = req.body;
 
-    // Si pas de user (session expirée), c'est normal lors du verrouillage
-    // Le JWT peut être expiré mais le cookie session persiste
     if (!req.user) {
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Session déverrouillée (biométrie)' 
-      });
-    }
-
-    if (!password) {
-      // Déverrouillage biométrique sans password
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Session déverrouillée (biométrie)' 
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Session expirée, reconnectez-vous' 
       });
     }
 
     // Récupérer user depuis DB
     const user = await findUserByEmail(req.user.email);
-
     if (!user) {
       return res.status(401).json({ 
         success: false, 
@@ -582,35 +612,42 @@ router.post('/unlock', authenticateJWT, async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier mot de passe
-    const isValid = await bcrypt.compare(password, user.password);
+    // Option 1: Mot de passe
+    if (password) {
+      const isValid = await bcrypt.compare(password, user.password);
 
-    if (!isValid) {
-      auditLog('UNLOCK_FAILED', { 
-        userId: user.id, 
-        email: user.email,
-        reason: 'wrong_password'
-      });
+      if (!isValid) {
+        logger.warn('Unlock failed - wrong password', { 
+          userId: user.id,
+          email: user.email
+        });
 
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Mot de passe incorrect' 
-      });
+        return res.status(401).json({ 
+          success: false, 
+          message: 'Mot de passe incorrect' 
+        });
+      }
+      
+      logger.info('Unlock success - password', { userId: user.id });
+      return res.json({ success: true, message: 'Session déverrouillée' });
+    }
+    
+    // Option 2: Biométrie (validée par WebAuthn en amont)
+    if (biometricVerified === true) {
+      // NOTE: biometricVerified doit être validé par /api/webauthn/verify avant
+      // Cette route ne fait que confirmer que la biométrie a été validée
+      logger.info('Unlock success - biometric', { userId: user.id });
+      return res.json({ success: true, message: 'Session déverrouillée (biométrie)' });
     }
 
-    // Succès - Session déverrouillée
-    auditLog('UNLOCK_SUCCESS', { 
-      userId: user.id, 
-      email: user.email 
-    });
-
-    res.json({ 
-      success: true, 
-      message: 'Session déverrouillée' 
+    // Aucune méthode fournie
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Mot de passe ou biométrie requis' 
     });
 
   } catch (error) {
-    console.error('[AUTH] Unlock error:', error);
+    logError('Unlock error', error as Error);
     res.status(500).json({ 
       success: false, 
       message: 'Erreur déverrouillage' 
@@ -650,10 +687,11 @@ async function findUserByEmail(email: string): Promise<User | null> {
       name: user.name || undefined,
       role: user.role as Role,
       twoFactorEnabled: user.twoFactorEnabled,
+      twoFactorSecret: user.twoFactorSecret || undefined,
       createdAt: user.createdAt
     };
   } catch (error) {
-    console.error('❌ Erreur findUserByEmail:', error);
+    logError('Error in findUserByEmail', error as Error);
     return null;
   }
 }
@@ -673,10 +711,11 @@ async function findUserById(id: string): Promise<User | null> {
       name: user.name || undefined,
       role: user.role as Role,
       twoFactorEnabled: user.twoFactorEnabled,
+      twoFactorSecret: user.twoFactorSecret || undefined,
       createdAt: user.createdAt
     };
   } catch (error) {
-    console.error('❌ Erreur findUserById:', error);
+    logError('Error in findUserById', error as Error);
     return null;
   }
 }
@@ -688,7 +727,7 @@ async function updateLastLogin(userId: string): Promise<void> {
       data: { lastLogin: new Date() }
     });
   } catch (error) {
-    console.error('❌ Erreur updateLastLogin:', error);
+    logError('Error in updateLastLogin', error as Error, { userId });
   }
 }
 
@@ -699,7 +738,7 @@ async function saveTempTwoFactorSecret(userId: string, secret: string): Promise<
       data: { twoFactorSecret: secret }
     });
   } catch (error) {
-    console.error('❌ Erreur saveTempTwoFactorSecret:', error);
+    logError('Error in saveTempTwoFactorSecret', error as Error, { userId });
   }
 }
 
@@ -726,39 +765,14 @@ router.get('/me', authenticateJWT, async (req: Request, res: Response) => {
       });
     }
 
-    // ⚡ CACHE REDIS - Éviter de re-décoder les permissions à chaque requête
-    const cacheKey = `user:info:${req.user.id}`;
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        // 🔥 CRITIQUE : Headers anti-cache (sécurité double couche)
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.removeHeader('ETag');
-        res.setHeader('Last-Modified', new Date().toUTCString());
-        
-        return res.json(JSON.parse(cached));
-      }
-    } catch (redisErr) {
-      console.warn('[REDIS] Cache read failed for /me, continuing without cache:', redisErr);
-    }
-
-    // 🔥 CRITIQUE : Headers anti-cache (sécurité double couche)
+    // 🔥 CRITIQUE : Headers anti-cache (sécurité)
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.removeHeader('ETag');
-    res.setHeader('Last-Modified', new Date().toUTCString());
 
-    // Décoder les permissions depuis le JWT
+    // Décoder les permissions depuis le JWT (rapide, pas besoin cache)
     const permissions = decodePermissions(req.user.permissions);
-
-    auditLog('USER_INFO_FETCHED', {
-      userId: req.user.id,
-      role: req.user.role,
-      ip: req.ip
-    });
 
     const response = {
       success: true,
@@ -767,22 +781,14 @@ router.get('/me', authenticateJWT, async (req: Request, res: Response) => {
         email: req.user.email,
         name: req.user.name,
         role: req.user.role,
-        permissions // Permissions décodées pour vérifications frontend
+        permissions
       }
     };
 
-    // Mettre en cache pour 30 secondes (équilibre entre performance et sécurité)
-    try {
-      await redis.set(cacheKey, JSON.stringify(response), 30);
-    } catch (redisErr) {
-      console.warn('[REDIS] Cache write failed for /me:', redisErr);
-    }
-
     res.json(response);
 
-  } catch (error: any) {
-    console.error('Get user info error:', error);
-    auditLog('USER_INFO_ERROR', { error: error.message });
+  } catch (error) {
+    logError('Get user info error', error as Error);
     
     res.status(500).json({
       success: false,
@@ -801,7 +807,7 @@ router.get('/me', authenticateJWT, async (req: Request, res: Response) => {
  * Rafraîchit le JWT sans redemander les credentials
  * Utile pour prolonger la session utilisateur
  */
-router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => {
+router.post('/refresh', authenticateJWT, validateCSRF, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Non authentifié' });
@@ -830,7 +836,7 @@ router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => 
       domain: process.env.NODE_ENV === 'development' ? 'localhost' : undefined
     });
 
-    auditLog('TOKEN_REFRESHED', {
+    logger.info('Token refreshed', {
       userId: req.user.id,
       ip: req.ip
     });
@@ -840,8 +846,8 @@ router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => 
       token: newToken
     });
 
-  } catch (error: any) {
-    console.error('Token refresh error:', error);
+  } catch (error) {
+    logError('Token refresh error', error as Error);
     
     res.status(500).json({
       success: false,

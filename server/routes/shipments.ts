@@ -6,13 +6,30 @@
  */
 
 import express, { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
+import validator from 'validator';
 import { Permission } from '../utils/permissions';
 import { requirePermission, requireAnyPermission } from '../middleware/permissions';
 import { authenticateJWT } from '../middleware/auth';
 import { Role, ShipmentStatus } from '../types';
 import { prisma } from '../config/prisma';
+import { logger, logError } from '../config/logger';
 
 const router = express.Router();
+
+// 🚦 Rate Limiting : 300 requêtes/15min pour shipments (per-user)
+const shipmentsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15min
+  max: 300,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: 'Limite shipments atteinte. Réessayez dans 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// 🔒 CONSTANTES DE SÉCURITÉ
+const MAX_PAGE_SIZE = 100;
+const MAX_PAGE_NUMBER = 10000;
 
 // ============================================
 // MOCK DATA (⚠️ TO BE REPLACED WITH DATABASE)
@@ -21,19 +38,19 @@ const router = express.Router();
 const IS_MOCK_MODE = process.env.USE_MOCK_DATA === 'true';
 
 if (IS_MOCK_MODE) {
-  console.warn('\n' + '='.repeat(60));
-  console.warn('⚠️  AVERTISSEMENT: MODE MOCK ACTIVÉ');
-  console.warn('='.repeat(60));
-  console.warn('Les données mock sont utilisées.');
-  console.warn('✅ Données FICTIVES uniquement (conformité RGPD)');
-  console.warn('❌ Ne JAMAIS utiliser en production');
-  console.warn('Pour désactiver: USE_MOCK_DATA=false');
-  console.warn('='.repeat(60) + '\n');
+  logger.warn('\n' + '='.repeat(60));
+  logger.warn('⚠️  AVERTISSEMENT: MODE MOCK ACTIVÉ');
+  logger.warn('='.repeat(60));
+  logger.warn('Les données mock sont utilisées.');
+  logger.warn('✅ Données FICTIVES uniquement (conformité RGPD)');
+  logger.warn('❌ Ne JAMAIS utiliser en production');
+  logger.warn('Pour désactiver: USE_MOCK_DATA=false');
+  logger.warn('='.repeat(60) + '\n');
   
   // 🚨 SÉCURITÉ CRITIQUE: Bloquer démarrage production avec mock data
   if (process.env.NODE_ENV === 'production') {
-    console.error('🚨 ERREUR FATALE: MOCK_DATA interdit en production');
-    console.error('Configurez une vraie base de données PostgreSQL');
+    logger.error('🚨 ERREUR FATALE: MOCK_DATA interdit en production');
+    logger.error('Configurez une vraie base de données PostgreSQL');
     process.exit(1);
   }
 }
@@ -151,14 +168,29 @@ const MOCK_SHIPMENTS = [
 router.get(
   '/',
   authenticateJWT,
+  shipmentsLimiter,
   requireAnyPermission([Permission.VIEW_SHIPMENTS, Permission.VIEW_OWN_SHIPMENTS]),
   async (req: Request, res: Response) => {
     try {
       const { role, id: userId } = req.user!;
       
-      // ✅ PAGINATION pour performance
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50; // Max 50 par défaut
+      // ✅ PAGINATION avec validation stricte
+      let page = parseInt(req.query.page as string) || 1;
+      let limit = parseInt(req.query.limit as string) || 50;
+      
+      // Validation page (min 1, max 10000)
+      if (!validator.isInt(String(page), { min: 1, max: MAX_PAGE_NUMBER })) {
+        page = 1;
+      }
+      
+      // Validation limit (min 1, max 100)
+      if (!validator.isInt(String(limit), { min: 1, max: MAX_PAGE_SIZE })) {
+        limit = 50;
+      }
+      
+      // Clamp limit à MAX_PAGE_SIZE
+      limit = Math.min(limit, MAX_PAGE_SIZE);
+      
       const skip = (page - 1) * limit;
 
       // ✅ Récupérer depuis la base de données
@@ -210,7 +242,7 @@ router.get(
         return mappedShipment;
       });
 
-      console.log('[SHIPMENTS] Fetched for', role, ':', sanitizedShipments.length, 'shipments (page', page, ')');
+      logger.info('Shipments fetched', { role, count: sanitizedShipments.length, page, userId });
 
       res.json({
         success: true,
@@ -225,7 +257,7 @@ router.get(
       });
 
     } catch (error: any) {
-      console.error('[SHIPMENTS] Error fetching:', error);
+      logError('Shipments fetch error', error as Error, { userId: req.user?.id, role: req.user?.role });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des dossiers'
@@ -241,11 +273,20 @@ router.get(
 router.get(
   '/:id',
   authenticateJWT,
+  shipmentsLimiter,
   requireAnyPermission([Permission.VIEW_SHIPMENTS, Permission.VIEW_OWN_SHIPMENTS]),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { role, id: userId } = req.user!;
+      
+      // ✅ Validation UUID
+      if (!validator.isUUID(id, 4)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID dossier invalide (UUID v4 requis)'
+        });
+      }
 
       // ✅ Récupérer depuis PostgreSQL avec relations
       const shipment = await prisma.shipment.findUnique({
@@ -270,14 +311,22 @@ router.get(
           message: 'Accès refusé à ce dossier'
         });
       }
+      
+      // ✅ Filtrage CLIENT : masquer FEE expenses (marges agence)
+      let sanitizedShipment = shipment;
+      if (role === Role.CLIENT) {
+        const expenses = shipment.expenses || [];
+        const sanitizedExpenses = expenses.filter(e => e.type !== 'FEE');
+        sanitizedShipment = { ...shipment, expenses: sanitizedExpenses };
+      }
 
       res.json({
         success: true,
-        shipment
+        shipment: sanitizedShipment
       });
 
     } catch (error: any) {
-      console.error('[SHIPMENTS] Error fetching detail:', error);
+      logError('Shipment detail fetch error', error as Error, { shipmentId: req.params.id, userId: req.user?.id });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération du dossier'
@@ -293,28 +342,57 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
+  shipmentsLimiter,
   requirePermission(Permission.EDIT_SHIPMENTS),
   async (req: Request, res: Response) => {
     try {
       const { id: userId } = req.user!;
+      const { trackingNumber, clientName, origin, commodityType, description, shippingLine, containerNumber, destination } = req.body;
+      
+      // ✅ Validation champs requis
+      if (!trackingNumber || !clientName || !origin) {
+        return res.status(400).json({
+          success: false,
+          message: 'Champs requis manquants (trackingNumber, clientName, origin)'
+        });
+      }
+      
+      // ✅ Validation types
+      if (typeof trackingNumber !== 'string' || trackingNumber.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'trackingNumber invalide'
+        });
+      }
+      
+      // ✅ Sanitization XSS
+      const sanitizedData = {
+        trackingNumber: validator.escape(trackingNumber),
+        clientName: validator.escape(clientName),
+        commodityType: commodityType ? validator.escape(commodityType) : '',
+        description: description ? validator.escape(description) : '',
+        origin: validator.escape(origin),
+        destination: destination ? validator.escape(destination) : '',
+        shippingLine: shippingLine ? validator.escape(shippingLine) : 'Maersk',
+        containerNumber: containerNumber ? validator.escape(containerNumber) : null
+      };
       
       // ✅ Créer en base de données avec Prisma
       const newShipment = await prisma.shipment.create({
         data: {
-          trackingNumber: req.body.trackingNumber,
-          clientName: req.body.clientName,
-          commodityType: req.body.commodityType,
-          description: req.body.description || '',
-          origin: req.body.origin,
-          destination: req.body.destination,
+          trackingNumber: sanitizedData.trackingNumber,
+          clientName: sanitizedData.clientName,
+          commodityType: sanitizedData.commodityType,
+          description: sanitizedData.description,
+          origin: sanitizedData.origin,
+          destination: sanitizedData.destination,
           eta: req.body.eta,
           blNumber: req.body.blNumber,
-          shippingLine: req.body.shippingLine || 'Maersk',
-          containerNumber: req.body.containerNumber || null,
+          shippingLine: sanitizedData.shippingLine,
+          containerNumber: sanitizedData.containerNumber,
           freeDays: req.body.freeDays || 7,
           status: ShipmentStatus.IN_TRANSIT,
-          createdById: userId, // ✅ Utiliser createdById (schéma Prisma)
-          // Champs JSON vides par défaut
+          createdById: userId,
           alerts: [],
           documents: [],
           expenses: [],
@@ -329,7 +407,7 @@ router.post(
         }
       });
 
-      console.log('[SHIPMENTS] ✅ Created in DB:', newShipment.trackingNumber);
+      logger.info('Shipment created', { trackingNumber: newShipment.trackingNumber, userId });
 
       res.status(201).json({
         success: true,
@@ -337,7 +415,7 @@ router.post(
       });
 
     } catch (error: any) {
-      console.error('[SHIPMENTS] Error creating:', error);
+      logError('Shipment creation error', error as Error, { userId: req.user?.id });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la création du dossier',
@@ -354,36 +432,49 @@ router.post(
 router.put(
   '/:id/status',
   authenticateJWT,
+  shipmentsLimiter,
   requirePermission(Permission.EDIT_OPERATIONS),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status, deliveryInfo } = req.body;
-
-      const shipmentIndex = MOCK_SHIPMENTS.findIndex(s => s.id === id);
-      if (shipmentIndex === -1) {
-        return res.status(404).json({
+      
+      // ✅ Validation UUID
+      if (!validator.isUUID(id, 4)) {
+        return res.status(400).json({
           success: false,
-          message: 'Dossier non trouvé'
+          message: 'ID dossier invalide (UUID v4 requis)'
+        });
+      }
+      
+      // ✅ Validation status (whitelist)
+      if (status && !Object.values(ShipmentStatus).includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Status invalide',
+          allowedValues: Object.values(ShipmentStatus)
         });
       }
 
-      // TODO: UPDATE en DB
-      MOCK_SHIPMENTS[shipmentIndex] = {
-        ...MOCK_SHIPMENTS[shipmentIndex],
-        status,
-        deliveryInfo: deliveryInfo || MOCK_SHIPMENTS[shipmentIndex].deliveryInfo
-      };
+      // ✅ UPDATE en DB avec Prisma
+      const updatedShipment = await prisma.shipment.update({
+        where: { id },
+        data: {
+          status: status || undefined,
+          deliveryDriver: deliveryInfo?.driverName || undefined,
+          deliveryDate: deliveryInfo?.deliveryDate ? new Date(deliveryInfo.deliveryDate) : undefined
+        }
+      });
 
-      console.log('[SHIPMENTS] Status updated:', id, status);
+      logger.info('Shipment status updated', { shipmentId: id, status, userId: req.user?.id });
 
       res.json({
         success: true,
-        shipment: MOCK_SHIPMENTS[shipmentIndex]
+        shipment: updatedShipment
       });
 
     } catch (error: any) {
-      console.error('[SHIPMENTS] Error updating status:', error);
+      logError('Shipment status update error', error as Error, { shipmentId: req.params.id, userId: req.user?.id });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la mise à jour'
@@ -399,29 +490,33 @@ router.put(
 router.post(
   '/:id/documents',
   authenticateJWT,
+  shipmentsLimiter,
   requirePermission(Permission.UPLOAD_DOCUMENTS),
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const document = req.body;
-
-      const shipmentIndex = MOCK_SHIPMENTS.findIndex(s => s.id === id);
-      if (shipmentIndex === -1) {
-        return res.status(404).json({
+      
+      // ✅ Validation UUID
+      if (!validator.isUUID(id, 4)) {
+        return res.status(400).json({
           success: false,
-          message: 'Dossier non trouvé'
+          message: 'ID dossier invalide (UUID v4 requis)'
         });
       }
 
-      const newDocument = {
-        id: Date.now().toString(),
-        ...document,
-        uploadDate: new Date().toISOString()
-      };
+      // ✅ CREATE en DB avec Prisma
+      const newDocument = await prisma.document.create({
+        data: {
+          shipmentId: id,
+          name: document.name,
+          type: document.type,
+          status: document.status || 'Pending',
+          uploadDate: new Date()
+        }
+      });
 
-      MOCK_SHIPMENTS[shipmentIndex].documents.push(newDocument);
-
-      console.log('[SHIPMENTS] Document added:', id, newDocument.type);
+      logger.info('Document added to shipment', { shipmentId: id, documentType: newDocument.type, userId: req.user?.id });
 
       res.status(201).json({
         success: true,
@@ -429,7 +524,7 @@ router.post(
       });
 
     } catch (error: any) {
-      console.error('[SHIPMENTS] Error adding document:', error);
+      logError('Document add error', error as Error, { shipmentId: req.params.id, userId: req.user?.id });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'ajout du document'

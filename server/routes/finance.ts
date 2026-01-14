@@ -5,13 +5,29 @@
  */
 
 import express, { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
+import validator from 'validator';
 import { Permission } from '../utils/permissions';
 import { requirePermission, requireAnyPermission } from '../middleware/permissions';
 import { authenticateJWT } from './auth';
-import { PrismaClient } from '@prisma/client';
+import { logger, logError } from '../config/logger';
+import { prisma } from '../config/prisma';
 
 const router = express.Router();
-const prisma = new PrismaClient();
+
+// 🚦 Rate Limiting : 500 requêtes/15min pour finance (per-user)
+const financeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15min
+  max: 500,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: 'Limite finance atteinte. Réessayez dans 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// 🔒 CONSTANTES DE SÉCURITÉ
+const MAX_AMOUNT = 999999999; // 999M GNF max
+const MIN_AMOUNT = 0.01; // 1 centime min
 
 /**
  * GET /api/finance/overview/:shipmentId
@@ -22,10 +38,19 @@ const prisma = new PrismaClient();
 router.get(
   '/overview/:shipmentId',
   authenticateJWT,
+  financeLimiter,
   requirePermission(Permission.VIEW_FINANCE),
   async (req: Request, res: Response) => {
     try {
       const { shipmentId } = req.params;
+      
+      // ✅ Validation UUID shipmentId
+      if (!validator.isUUID(shipmentId, 4)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ShipmentId invalide (UUID v4 requis)'
+        });
+      }
       
       // TODO: Implémenter requête Prisma vers table Expense
       // const expenses = await prisma.expense.findMany({ where: { shipmentId } });
@@ -37,7 +62,7 @@ router.get(
       });
 
     } catch (error: any) {
-      console.error('[FINANCE] Error fetching overview:', error);
+      logError('Finance overview error', error as Error, { shipmentId: req.params.shipmentId, userId: req.user?.id });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération des données financières'
@@ -55,35 +80,64 @@ router.get(
 router.post(
   '/expenses',
   authenticateJWT,
+  financeLimiter,
   requirePermission(Permission.ADD_EXPENSES),
   async (req: Request, res: Response) => {
     try {
       const { shipmentId, type, amount, description, receiptUrl, id, category, paid, date } = req.body;
       
-      // Validation
+      // ✅ Validation champs requis
       if (!shipmentId || !type || !amount) {
         return res.status(400).json({
           success: false,
           message: 'Champs requis manquants'
         });
       }
+      
+      // ✅ Validation UUID shipmentId
+      if (!validator.isUUID(shipmentId, 4)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ShipmentId invalide (UUID v4 requis)'
+        });
+      }
+      
+      // ✅ Validation montant (protection NaN/Infinity/négatif)
+      if (!validator.isFloat(String(amount), { min: MIN_AMOUNT, max: MAX_AMOUNT })) {
+        return res.status(400).json({
+          success: false,
+          message: `Montant invalide (min ${MIN_AMOUNT}, max ${MAX_AMOUNT})`,
+        });
+      }
+      
+      // ✅ Validation type (string non vide)
+      if (typeof type !== 'string' || type.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Type de dépense invalide'
+        });
+      }
+      
+      // ✅ Sanitization XSS sur description et receiptUrl
+      const sanitizedDescription = description ? validator.escape(description) : '';
+      const sanitizedReceiptUrl = receiptUrl ? validator.escape(receiptUrl) : null;
 
       // ✅ PERSISTANCE POSTGRESQL avec Prisma
       const expense = await prisma.expense.create({
         data: {
           id: id || undefined, // Laisser Prisma générer si absent
           shipmentId,
-          type,
+          type: validator.escape(type),
           amount: parseFloat(amount),
-          description: description || '',
-          category: category || 'Autre',
+          description: sanitizedDescription,
+          category: category ? validator.escape(category) : 'Autre',
           paid: paid || false,
           date: date ? new Date(date) : new Date(),
-          receiptUrl: receiptUrl || null
+          receiptUrl: sanitizedReceiptUrl
         }
       });
       
-      console.log('[FINANCE] ✅ Expense saved to DB:', expense);
+      logger.info('Expense saved to DB', { expenseId: expense.id, userId: req.user?.id, shipmentId });
       
       res.status(200).json({
         success: true,
@@ -92,7 +146,7 @@ router.post(
       });
 
     } catch (error: any) {
-      console.error('[FINANCE] Error adding expense:', error);
+      logError('Finance add expense error', error as Error, { userId: req.user?.id, shipmentId: req.body.shipmentId });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'ajout de la dépense'
@@ -110,6 +164,7 @@ router.post(
 router.post(
   '/payments/liquidation',
   authenticateJWT,
+  financeLimiter,
   requirePermission(Permission.MAKE_PAYMENTS),
   async (req: Request, res: Response) => {
     try {
@@ -121,9 +176,17 @@ router.post(
           message: 'ID dossier requis'
         });
       }
+      
+      // ✅ Validation UUID shipmentId
+      if (!validator.isUUID(shipmentId, 4)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ShipmentId invalide (UUID v4 requis)'
+        });
+      }
 
       // ✅ MOCK: Simuler le paiement (en attendant Prisma)
-      console.log('[FINANCE] ✅ Liquidation payment (MOCK):', shipmentId);
+      logger.info('Liquidation payment (MOCK)', { shipmentId, userId: req.user?.id });
       
       res.status(200).json({
         success: true,
@@ -137,7 +200,7 @@ router.post(
       });
 
     } catch (error: any) {
-      console.error('[FINANCE] Error paying liquidation:', error);
+      logError('Finance liquidation payment error', error as Error, { userId: req.user?.id, shipmentId: req.body.shipmentId });
       res.status(500).json({
         success: false,
         message: 'Erreur lors du paiement'
@@ -155,10 +218,19 @@ router.post(
 router.put(
   '/expenses/:expenseId/approve',
   authenticateJWT,
+  financeLimiter,
   requirePermission(Permission.APPROVE_EXPENSES),
   async (req: Request, res: Response) => {
     try {
       const { expenseId } = req.params;
+      
+      // ✅ Validation UUID expenseId
+      if (!validator.isUUID(expenseId, 4)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ExpenseId invalide (UUID v4 requis)'
+        });
+      }
 
       // TODO: Mettre à jour DB avec Prisma
       // await prisma.expense.update({ where: { id: expenseId }, data: { approved: true } });
@@ -170,6 +242,7 @@ router.put(
       });
 
     } catch (error: any) {
+      logError('Finance approve expense error', error as Error, { userId: req.user?.id, expenseId: req.params.expenseId });
       res.status(500).json({
         success: false,
         message: 'Erreur lors de l\'approbation'
@@ -187,10 +260,27 @@ router.put(
 router.get(
   '/reports/monthly',
   authenticateJWT,
+  financeLimiter,
   requireAnyPermission([Permission.VIEW_FINANCE, Permission.EXPORT_DATA]),
   async (req: Request, res: Response) => {
     try {
       const { month, year } = req.query;
+      
+      // ✅ Validation month (1-12)
+      if (month && !validator.isInt(String(month), { min: 1, max: 12 })) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mois invalide (1-12 requis)'
+        });
+      }
+      
+      // ✅ Validation year (2020-2050)
+      if (year && !validator.isInt(String(year), { min: 2020, max: 2050 })) {
+        return res.status(400).json({
+          success: false,
+          message: 'Année invalide (2020-2050)'
+        });
+      }
 
       // TODO: Générer rapport avec Prisma aggregations
       // const report = await prisma.expense.aggregate({ ... });
@@ -202,6 +292,7 @@ router.get(
       });
 
     } catch (error: any) {
+      logError('Finance monthly report error', error as Error, { userId: req.user?.id, month: req.query.month, year: req.query.year });
       res.status(500).json({
         success: false,
         message: 'Erreur génération rapport'
