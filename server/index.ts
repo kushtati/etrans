@@ -50,6 +50,21 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // ============================================
+// VERSION & BUILD INFO
+// ============================================
+const SERVER_VERSION = '2.2.0';
+const BUILD_DATE = '2026-01-14';
+const COMMIT_MARKER = 'a2c0025-tsx-production';
+
+console.log(`
+╔═══════════════════════════════════════════════════════════╗
+║  🚀 TRANSIT GUINÉE SERVER - v${SERVER_VERSION}                   ║
+║  📅 Build: ${BUILD_DATE}                                   ║
+║  🔖 Commit: ${COMMIT_MARKER}                    ║
+╚═══════════════════════════════════════════════════════════╝
+`);
+
+// ============================================
 // CONFIGURATION
 // ============================================
 
@@ -253,7 +268,9 @@ app.get('/', (req: Request, res: Response) => {
   res.json({
     service: 'Transit Guinée API',
     status: 'running',
-    version: '2.2.0',
+    version: SERVER_VERSION,
+    build: BUILD_DATE,
+    commit: COMMIT_MARKER,
     timestamp: new Date().toISOString()
   });
 });
@@ -262,6 +279,9 @@ app.get('/', (req: Request, res: Response) => {
 app.get('/api/health', async (req: Request, res: Response) => {
   const health: any = {
     status: 'OK',
+    version: SERVER_VERSION,
+    build: BUILD_DATE,
+    commit: COMMIT_MARKER,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: NODE_ENV,
