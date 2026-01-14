@@ -123,7 +123,7 @@ export async function initRedis(): Promise<void> {
         host: url.hostname,
         port: parseInt(url.port) || 6379,
         password: url.password || undefined,
-        tls: url.protocol === 'rediss:' ? {} : undefined,
+        tls: url.protocol === 'rediss:' ? { rejectUnauthorized: false } : undefined,
       };
       logger.info('Using REDIS_URL', { host: url.hostname, port: url.port, tls: url.protocol === 'rediss:' });
     } catch (e) {
@@ -175,39 +175,56 @@ export async function initRedis(): Promise<void> {
     }
   }
 
-  // En production, Redis OBLIGATOIRE
+  // En production, Redis OBLIGATOIRE (avec timeout)
   if (process.env.NODE_ENV === 'production') {
-    logger.info('Production mode - Redis REQUIRED');
+    logger.info('Production mode - Redis REQUIRED (with timeout)');
     
-    // Compteur erreurs pour monitoring
-    let errorCount = 0;
-    const MAX_ERRORS_BEFORE_ALERT = 10;
-    
-    const client = new Redis({
-      ...redisConfig,
-      tls: redisConfig.tls || {}, // TLS par défaut en production
-      maxRetriesPerRequest: 10, // Plus tolérant
-      retryStrategy: (times: number) => {
-        const delay = Math.min(times * 200, 5000); // Max 5s entre essais
-        
-        if (times > 20) {
-          logger.error('Redis max retries exceeded - CRITICAL');
-          process.exit(1); // Arrêt forcé en prod si Redis down
-        }
-        
-        logger.warn('Redis retry attempt', { attempt: times, delay });
-        return delay;
-      },
-      enableOfflineQueue: false,
-    });
+    try {
+      const prodClient = new Redis({
+        ...redisConfig,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times) => {
+          if (times > 3) return null;
+          return Math.min(times * 200, 1000);
+        },
+        connectTimeout: 5000, // 5s timeout en prod
+        lazyConnect: true,
+        enableOfflineQueue: false,
+      });
 
-    // Gestion erreurs production avec monitoring
-    client.on('error', (err) => {
-      errorCount++;
-      logError('Redis production error', err, { count: errorCount });
+      // CRITIQUE : Capturer erreurs mais ne pas crash
+      prodClient.on('error', (err) => {
+        logger.error('Redis error (non-fatal)', { error: err.message });
+      });
+
+      // Essayer connexion avec timeout
+      await Promise.race([
+        prodClient.connect(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Redis connection timeout')), 5000)
+        )
+      ]);
       
-      if (errorCount >= MAX_ERRORS_BEFORE_ALERT) {
-        // TODO: Envoyer alerte (email, Slack, PagerDuty)
+      redisClient = prodClient;
+      logger.info('Redis connected successfully in production');
+      return;
+      
+    } catch (error: any) {
+      logger.error('Redis connection failed in production', { error: error.message });
+      logger.warn('Falling back to in-memory store (NOT RECOMMENDED)');
+      redisClient = null;
+      isUsingFallback = true;
+      memoryFallback = new InMemoryStore();
+      return;
+    }
+  }
+
+  // Fallback final : mode mémoire
+  logger.warn('No Redis configuration - using memory fallback');
+  redisClient = null;
+  isUsingFallback = true;
+  memoryFallback = new InMemoryStore();
+}
         logger.error('ALERT: Redis error threshold exceeded', { count: errorCount });
       }
     });

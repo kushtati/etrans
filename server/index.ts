@@ -12,6 +12,25 @@
  * ✅ Variables environnement (.env.server)
  */
 
+// ============================================
+// GESTIONNAIRES D'ERREURS GLOBAUX (EN PREMIER)
+// ============================================
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('═══════════════════════════════════════════════════');
+  console.error('[CRITICAL] Unhandled Rejection at:', promise);
+  console.error('[CRITICAL] Reason:', reason);
+  console.error('═══════════════════════════════════════════════════');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('═══════════════════════════════════════════════════');
+  console.error('[CRITICAL] Uncaught Exception:', err);
+  console.error('[CRITICAL] Stack:', err.stack);
+  console.error('═══════════════════════════════════════════════════');
+  process.exit(1);
+});
+
 // 🔐 CRITIQUE : Charger env AVANT tout import
 import './config/env';
 
