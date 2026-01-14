@@ -26,6 +26,9 @@ out/
 .next/
 *.local
 
+# Railway/Nixpacks build cache
+.nixpacks/
+
 # ============================================
 # 🔒 SECRETS & ENVIRONMENT (clés API, passwords)
 # ============================================
