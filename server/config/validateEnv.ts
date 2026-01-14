@@ -99,16 +99,19 @@ export function validateEnvironment(): void {
     }
   }
   
-  // GEMINI_API_KEY: format valide
-  if (!process.env.GEMINI_API_KEY!.startsWith('AIza')) {
-    warnings.push('⚠️  GEMINI_API_KEY ne commence pas par "AIza" (format inhabituel)');
+  // GEMINI_API_KEY: format valide (AIza* ancien format, gen-lang-client-* nouveau format)
+  const geminiKey = process.env.GEMINI_API_KEY!;
+  const isValidFormat = geminiKey.startsWith('AIza') || geminiKey.startsWith('gen-lang-client-');
+  
+  if (!isValidFormat && !geminiKey.startsWith('OPTIONNEL') && !geminiKey.startsWith('CHANGE_ME')) {
+    warnings.push('⚠️  GEMINI_API_KEY format non reconnu (attendu: AIza* ou gen-lang-client-*)');
   }
   
-  if (process.env.GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
+  if (geminiKey.includes('YOUR_GEMINI') || geminiKey.includes('CHANGE_ME') || geminiKey.includes('OPTIONNEL')) {
     // En dev, warning seulement (permet de tester l'auth sans Gemini)
     if (process.env.NODE_ENV === 'production') {
-      errors.push('❌ GEMINI_API_KEY est un placeholder');
-      console.error('  Obtenir une clé: https://aistudio.google.com/app/apikey');
+      warnings.push('⚠️  GEMINI_API_KEY est un placeholder - AI désactivé');
+      console.log('  💡 Obtenir une clé: https://aistudio.google.com/app/apikey');
     } else {
       warnings.push('⚠️  GEMINI_API_KEY est un placeholder (AI désactivé)');
     }
