@@ -414,7 +414,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // START SERVER
 // ============================================
 
-console.log('[SERVER] 🚀 Initializing server...');
+console.log('[SERVER] 🚀 Initializing server... (Railway Deploy v2)');
 
 // Initialiser DB audit avant démarrage
 initAuditDB()
