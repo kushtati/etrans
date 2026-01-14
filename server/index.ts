@@ -586,16 +586,15 @@ const initializeServer = async () => {
       logger.error('REDIS CRITICAL FAILURE', { 
         error: error instanceof Error ? error.message : error 
       });
-      logger.error('Cannot start without Redis (rate limiting and security required)');
       
       if (NODE_ENV === 'production') {
-        logger.error('SECURITY BREACH: Production server cannot run without Redis');
-        logger.error('Alert: Redis connection failed, server not starting');
-        // TODO: Envoyer alerte (email, Slack, PagerDuty)
+        logger.warn('Production mode: Starting without Redis (DEGRADED MODE)');
+        logger.warn('Rate limiting and token blacklist will use memory fallback');
+        logger.warn('⚠️ NOT RECOMMENDED FOR PRODUCTION - Configure Redis ASAP');
+      } else {
+        logger.error('Cannot start without Redis (rate limiting and security required)');
+        process.exit(1);
       }
-      
-      // TOUJOURS crash si Redis échoue (dev ET production)
-      process.exit(1);
     }
     
     // 3. Démarrer serveur HTTP
