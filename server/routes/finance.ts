@@ -19,7 +19,7 @@ const router = express.Router();
 const financeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15min
   max: 500,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || req.ip || 'anonymous',
   message: { error: 'Limite finance atteinte. Réessayez dans 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -127,7 +127,7 @@ router.post(
         data: {
           id: id || undefined, // Laisser Prisma générer si absent
           shipmentId,
-          type: validator.escape(type),
+          type: type as any,
           amount: parseFloat(amount),
           description: sanitizedDescription,
           category: category ? validator.escape(category) : 'Autre',

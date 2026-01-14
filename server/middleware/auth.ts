@@ -23,7 +23,7 @@ export interface JWTPayload {
 }
 
 // Constante expiration token (cohérent avec auth.ts)
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const JWT_EXPIRES_IN: string | number = process.env.JWT_EXPIRES_IN || '24h';
 
 // Étendre Request Express avec user
 declare global {
@@ -195,7 +195,7 @@ export const generateToken = (payload: Omit<JWTPayload, 'iat' | 'exp'>): string 
     payload,
     jwtSecret,
     {
-      expiresIn: JWT_EXPIRES_IN, // ✅ Cohérent avec auth.ts (24h)
+      expiresIn: JWT_EXPIRES_IN as any,
       issuer: 'transit-guinee-api',
       audience: 'transit-guinee-app'
     }

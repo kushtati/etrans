@@ -74,7 +74,7 @@ router.post('/', logsLimiter, async (req: Request, res: Response) => {
         serverLogger.warn(logMessage, logContext);
         break;
       case 'audit':
-        serverLogger.audit(logMessage, logContext);
+        serverLogger.info(logMessage, { ...logContext, audit: true });
         break;
       case 'info':
       default:
@@ -135,7 +135,7 @@ router.post('/batch', logsLimiter, async (req: Request, res: Response) => {
           serverLogger.warn(logMessage, logContext);
           break;
         case 'audit':
-          serverLogger.audit(logMessage, logContext);
+          serverLogger.info(logMessage, { ...logContext, audit: true });
           break;
         default:
           serverLogger.info(logMessage, logContext);

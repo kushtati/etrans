@@ -159,7 +159,7 @@ export const auditLog = async (action: string, details: any): Promise<void> => {
     await logAuditAction({
       action,
       userId: details.userId || details.user || 'SYSTEM',
-      details: JSON.stringify(details),
+      details: details,
       ipAddress: details.ip || details.ipAddress,
       userAgent: details.userAgent
     });

@@ -44,7 +44,7 @@ const ALLOWED_MIME_TYPES = [
 const analyzeLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24h
   max: 100,
-  keyGenerator: (req) => req.user?.id || req.ip, // ✅ Per-user rate limiting
+  keyGenerator: (req) => req.user?.id || req.ip || 'anonymous', // ✅ Per-user rate limiting
   message: { error: 'Limite de 100 analyses/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -54,7 +54,7 @@ const analyzeLimiter = rateLimit({
 const assistantLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24h
   max: 50,
-  keyGenerator: (req) => req.user?.id || req.ip, // ✅ Per-user rate limiting
+  keyGenerator: (req) => req.user?.id || req.ip || 'anonymous', // ✅ Per-user rate limiting
   message: { error: 'Limite de 50 questions/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
   legacyHeaders: false

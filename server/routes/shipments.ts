@@ -11,7 +11,8 @@ import validator from 'validator';
 import { Permission } from '../utils/permissions';
 import { requirePermission, requireAnyPermission } from '../middleware/permissions';
 import { authenticateJWT } from '../middleware/auth';
-import { Role, ShipmentStatus } from '../types';
+import { Role } from '../types';
+import { ShipmentStatus, ExpenseType } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { logger, logError } from '../config/logger';
 
@@ -21,7 +22,7 @@ const router = express.Router();
 const shipmentsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15min
   max: 300,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || req.ip || 'anonymous',
   message: { error: 'Limite shipments atteinte. Réessayez dans 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -69,7 +70,7 @@ const MOCK_SHIPMENTS = [
     description: '40" - Granulés Plastiques',
     origin: 'Anvers, BE',
     destination: 'Conakry, GN',
-    status: ShipmentStatus.CUSTOMS_LIQUIDATION,
+    status: ShipmentStatus.CUSTOMS_PAID,
     eta: '2023-10-20',
     arrivalDate: '2023-10-21',
     freeDays: 7,
@@ -99,7 +100,7 @@ const MOCK_SHIPMENTS = [
     description: '3 Palettes Informatique',
     origin: 'Dubai, UAE',
     destination: 'Conakry, GN',
-    status: ShipmentStatus.PRE_CLEARANCE,
+    status: ShipmentStatus.DECLARATION_FILED,
     eta: '2023-11-05',
     freeDays: 14,
     blNumber: 'CMA123456789',
@@ -236,7 +237,7 @@ router.get(
         if (role === Role.CLIENT) {
           // Clients ne voient PAS les marges agence
           const expenses = mappedShipment.expenses || [];
-          const sanitizedExpenses = expenses.filter(e => e.type !== 'FEE');
+          const sanitizedExpenses = expenses.filter(e => e.type === ExpenseType.PROVISION);
           return { ...mappedShipment, expenses: sanitizedExpenses };
         }
         return mappedShipment;
@@ -312,11 +313,11 @@ router.get(
         });
       }
       
-      // ✅ Filtrage CLIENT : masquer FEE expenses (marges agence)
+      // ✅ Filtrage CLIENT : masquer DISBURSEMENT expenses (frais agence)
       let sanitizedShipment = shipment;
       if (role === Role.CLIENT) {
         const expenses = shipment.expenses || [];
-        const sanitizedExpenses = expenses.filter(e => e.type !== 'FEE');
+        const sanitizedExpenses = expenses.filter(e => e.type === ExpenseType.PROVISION);
         sanitizedShipment = { ...shipment, expenses: sanitizedExpenses };
       }
 
@@ -383,27 +384,10 @@ router.post(
           trackingNumber: sanitizedData.trackingNumber,
           clientName: sanitizedData.clientName,
           commodityType: sanitizedData.commodityType,
-          description: sanitizedData.description,
-          origin: sanitizedData.origin,
-          destination: sanitizedData.destination,
-          eta: req.body.eta,
           blNumber: req.body.blNumber,
-          shippingLine: sanitizedData.shippingLine,
           containerNumber: sanitizedData.containerNumber,
-          freeDays: req.body.freeDays || 7,
-          status: ShipmentStatus.IN_TRANSIT,
-          createdById: userId,
-          alerts: [],
-          documents: [],
-          expenses: [],
-          timeline: [
-            {
-              date: new Date().toISOString(),
-              event: 'Dossier créé',
-              actor: req.user!.email || 'System',
-              details: `Créé par ${req.user!.role}`
-            }
-          ]
+          status: ShipmentStatus.PENDING,
+          createdById: userId
         }
       });
 
@@ -511,7 +495,7 @@ router.post(
           shipmentId: id,
           name: document.name,
           type: document.type,
-          status: document.status || 'Pending',
+          url: document.url || '',
           uploadDate: new Date()
         }
       });
