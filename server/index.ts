@@ -34,6 +34,12 @@ import hpp from 'hpp';
 
 // Routes (importées après chargement env)
 import authRoutes from './routes/auth';
+import webauthnRoutes from './routes/webauthn';
+import aiRoutes from './routes/ai';
+import financeRoutes from './routes/finance';
+import shipmentsRoutes from './routes/shipments';
+import logsRoutes from './routes/logs';
+import adminLogsRoutes from './routes/adminLogs';
 
 // Services
 import { initAuditDB } from './services/auditService';
@@ -63,8 +69,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "https://cdn.tailwindcss.com"],
+      styleSrc: ["'self'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
@@ -137,16 +143,7 @@ app.use(globalLimiter);
 
 // 4. Body parsing sécurisé
 app.use(express.json({ 
-  limit: '10mb', // Limite taille requêtes
-  verify: (req, res, buf) => {
-    // Vérifier que le body n'est pas corrompu (sauf si vide)
-    if (buf.length === 0) return; // Accepter body vide
-    try {
-      JSON.parse(buf.toString());
-    } catch (e) {
-      throw new Error('Invalid JSON');
-    }
-  }
+  limit: '10mb' // Express valide automatiquement le JSON
 }));
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -232,27 +229,21 @@ app.use('/api/auth', (req: Request, res: Response, next: NextFunction) => {
 app.use('/api/auth', authRoutes);
 
 // WebAuthn routes (biométrie)
-import webauthnRoutes from './routes/webauthn';
 app.use('/api/webauthn', webauthnRoutes);
 
 // 🤖 AI routes (protected - Gemini API sécurisée)
-import aiRoutes from './routes/ai';
 app.use('/api/ai', aiRoutes);
 
 // Finance routes (protected by permissions)
-import financeRoutes from './routes/finance';
 app.use('/api/finance', financeRoutes);
 
 // Shipments routes (protected by permissions)
-import shipmentsRoutes from './routes/shipments';
 app.use('/api/shipments', shipmentsRoutes);
 
 // 📊 Logs routes (frontend logs collection)
-import logsRoutes from './routes/logs';
 app.use('/api/logs', logsRoutes);
 
 // 🔧 Admin logs routes (stats, cleanup, audit)
-import adminLogsRoutes from './routes/adminLogs';
 app.use('/api/admin/logs', adminLogsRoutes);
 
 // Static files (frontend build)
@@ -414,35 +405,63 @@ process.on('unhandledRejection', (reason, promise) => {
 // START SERVER
 // ============================================
 
-console.log('[SERVER] 🚀 Initializing server... (Railway Deploy v2)');
-
-// Initialiser DB audit avant démarrage
-initAuditDB()
-  .then(async () => {
-    console.log('[SERVER] ✅ Audit DB ready');
+const initializeServer = async () => {
+  try {
+    console.log('[SERVER] 🚀 Initializing server... (Railway Deploy v3)');
     
-    // Initialiser Redis pour rate limiting et token blacklist
+    // 1. Audit DB (non-critique)
+    try {
+      console.log('[SERVER] 🔄 Initializing Audit DB...');
+      await initAuditDB();
+      console.log('[SERVER] ✅ Audit DB ready');
+    } catch (error) {
+      console.warn('[SERVER] ⚠️ Audit DB failed (non-critical):', error instanceof Error ? error.message : error);
+    }
+    
+    // 2. Redis (CRITIQUE - rate limiting et token blacklist)
     console.log('[SERVER] 🔄 Initializing Redis...');
-    await initRedis();
-    console.log('[SERVER] ✅ Redis ready');
+    try {
+      await initRedis();
+      await redis.ping(); // Test connexion
+      console.log('[SERVER] ✅ Redis connected and ready');
+    } catch (error) {
+      console.error('[SERVER] ❌ REDIS INITIALIZATION FAILED:', error instanceof Error ? error.message : error);
+      console.error('[SERVER] ⚠️ Rate limiting and token blacklist DISABLED');
+      console.error('[SERVER] ⚠️ Application running in DEGRADED MODE');
+      
+      if (NODE_ENV === 'production') {
+        console.error('[SERVER] ⚠️ Continuing startup without Redis...');
+      } else {
+        throw error; // En dev, crash si Redis indisponible
+      }
+    }
     
-    // TODO: Démarrer jobs de nettoyage (désactivé temporairement)
-    // import('./services/cleanupJobs')
-    //   .then(({ startAllJobs }) => {
-    //     startAllJobs();
-    //     console.log('✅ Cleanup jobs started');
-    //   })
-    //   .catch((error) => {
-    //     console.warn('⚠️ Cleanup jobs failed to start (non-critical):', error.message);
-    //   });
-    
+    // 3. Démarrer serveur HTTP
     console.log('[SERVER] 🔄 Starting HTTP server...');
     startServer();
-  })
-  .catch((error) => {
-    console.error('[SERVER] ⚠️ Audit DB initialization failed:', error);
-    console.log('[SERVER] ⚠️ Starting server without audit logs...');
-    startServer();
-  });
+    
+  } catch (error) {
+    console.error('[SERVER] ❌ FATAL ERROR during initialization:');
+    console.error('[SERVER] Error:', error);
+    console.error('[SERVER] Stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
+    // En production : tenter de démarrer quand même (mode dégradé)
+    if (NODE_ENV === 'production') {
+      console.error('[SERVER] ⚠️ Starting in DEGRADED MODE...');
+      try {
+        startServer();
+      } catch (startError) {
+        console.error('[SERVER] ❌ Failed to start even in degraded mode:', startError);
+        process.exit(1);
+      }
+    } else {
+      console.error('[SERVER] 🛑 Exiting due to initialization failure');
+      process.exit(1);
+    }
+  }
+};
+
+// Appeler la fonction d'initialisation
+initializeServer();
 
 export default app;
