@@ -105,7 +105,7 @@ export function validateEnvironment(): void {
   const jwtSecret = process.env.JWT_SECRET!.toLowerCase();
   for (const pattern of insecureJwtPatterns) {
     if (jwtSecret.includes(pattern.toLowerCase())) {
-      errors.push(`[X] JWT_SECRET contient un placeholder: "${pattern}"`);
+      errors.push('[X] JWT_SECRET contient un placeholder: ' + pattern);
       break;
     }
   }
