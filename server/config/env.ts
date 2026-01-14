@@ -48,7 +48,10 @@ if (fs.existsSync(envPath)) {
   
   console.log('[ENV] ✅ .env.server loaded successfully');
 } else {
-  console.warn('[ENV] ⚠️  .env.server not found, using system environment variables');
+  // En production, Railway injecte les variables directement (normal)
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[ENV] ⚠️  .env.server not found, using system environment variables');
+  }
 }
 
 // Export pour permettre import
