@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Role } from './types';
 import { TransitProvider } from './context/transitContext';
 import { LoginScreen } from './components/LoginScreen';
@@ -445,6 +446,7 @@ const App: React.FC = () => {
       {/* 🔒 SÉCURITÉ: Écran de verrouillage automatique */}
       <LockScreen />
       <AppLayout />
+      <SpeedInsights />
     </TransitProvider>
   );
 };
