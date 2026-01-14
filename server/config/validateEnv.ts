@@ -48,24 +48,24 @@ export function validateEnvironment(): void {
   
   for (const key of required) {
     if (!process.env[key]) {
-      errors.push(`[X] ${key} manquant`);
+      errors.push('[X] ' + key + ' manquant');
     }
   }
   
   // Si variables critiques manquantes, arreter immediatement
   if (errors.length > 0) {
     console.error('[ERROR] ERREUR FATALE: Variables environnement manquantes:\n');
-    errors.forEach(err => console.error(`  ${err}`));
+    errors.forEach(err => console.error('  ' + err));
     console.error('\n[INFO] Actions requises:');
     console.error('  1. Verifier les variables Railway');
     console.error('  2. Ajouter toutes les variables requises');
     console.error('  3. Redemarrer le service\n');
     console.error('\n[CHECK] Variables actuelles:');
-    console.error(`  GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? '[OK]' : '[X]'}`);
-    console.error(`  JWT_SECRET: ${process.env.JWT_SECRET ? '[OK]' : '[X]'}`);
-    console.error(`  DATABASE_URL: ${process.env.DATABASE_URL ? '[OK]' : '[X]'}`);
-    console.error(`  PORT: ${process.env.PORT ? '[OK]' : '[X]'}`);
-    console.error(`  NODE_ENV: ${process.env.NODE_ENV ? '[OK]' : '[X]'}\n');
+    console.error('  GEMINI_API_KEY: ' + (process.env.GEMINI_API_KEY ? '[OK]' : '[X]'));
+    console.error('  JWT_SECRET: ' + (process.env.JWT_SECRET ? '[OK]' : '[X]'));
+    console.error('  DATABASE_URL: ' + (process.env.DATABASE_URL ? '[OK]' : '[X]'));
+    console.error('  PORT: ' + (process.env.PORT ? '[OK]' : '[X]'));
+    console.error('  NODE_ENV: ' + (process.env.NODE_ENV ? '[OK]' : '[X]') + '\n');
     
     // Attendre 2s pour que les logs soient flush sur Railway
     setTimeout(() => {
@@ -154,12 +154,12 @@ export function validateEnvironment(): void {
   
   const port = parseInt(process.env.PORT!, 10);
   if (isNaN(port) || port < 1 || port > 65535) {
-    errors.push(`[X] PORT invalide: ${process.env.PORT}`);
+    errors.push('[X] PORT invalide: ' + process.env.PORT);
   }
   
   const allowedEnvs = ['development', 'staging', 'production', 'test'];
   if (!allowedEnvs.includes(process.env.NODE_ENV!)) {
-    warnings.push(`[WARN] NODE_ENV "${process.env.NODE_ENV}" inhabituel (attendu: ${allowedEnvs.join(', ')})`);
+    warnings.push('[WARN] NODE_ENV ' + process.env.NODE_ENV + ' inhabituel (attendu: ' + allowedEnvs.join(', ') + ')');
   }
   
   // ============================================
@@ -168,27 +168,31 @@ export function validateEnvironment(): void {
   
   if (errors.length > 0) {
     console.error('\n[ERROR] ERREURS CRITIQUES:\n');
-    errors.forEach(err => console.error(`  ${err}`));
+    errors.forEach(err => console.error('  ' + err));
     console.error('\n[STOP] Le serveur ne peut pas demarrer avec ces erreurs.\n');
     throw new Error('Environment validation failed: ' + errors.join(', '));
   }
   
   if (warnings.length > 0) {
     console.warn('\n[WARN] AVERTISSEMENTS:\n');
-    warnings.forEach(warn => console.warn(`  ${warn}`));
+    warnings.forEach(warn => console.warn('  ' + warn));
     console.warn('');
   }
   
   // Validation reussie
+  const jwtStrength = process.env.JWT_SECRET!.length >= 64 ? 'Fort' : process.env.JWT_SECRET!.length >= 32 ? 'Acceptable' : 'Faible';
+  const dbStatus = process.env.DATABASE_URL ? '[OK] Configuree' : '[X] Non configuree';
+  const redisStatus = process.env.REDIS_URL ? '[OK] Configure' : '[WARN] Non configure';
+  
   console.log('[OK] Environnement valide avec succes\n');
-  console.log(`[INFO] Configuration:`);
-  console.log(`   NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`   PORT: ${process.env.PORT}`);
-  console.log(`   HOST: ${process.env.HOST || 'localhost'}`);
-  console.log(`   DATABASE: ${process.env.DATABASE_URL ? '[OK] Configuree' : '[X] Non configuree'}`);
-  console.log(`   REDIS: ${process.env.REDIS_URL ? '[OK] Configure' : '[WARN] Non configure'}`);
-  console.log(`   JWT_SECRET: [OK] Configure (${process.env.JWT_SECRET!.length >= 64 ? 'Fort' : process.env.JWT_SECRET!.length >= 32 ? 'Acceptable' : 'Faible'})`);
-  console.log(`   GEMINI_API_KEY: [OK] Configuree`);
+  console.log('[INFO] Configuration:');
+  console.log('   NODE_ENV: ' + process.env.NODE_ENV);
+  console.log('   PORT: ' + process.env.PORT);
+  console.log('   HOST: ' + (process.env.HOST || 'localhost'));
+  console.log('   DATABASE: ' + dbStatus);
+  console.log('   REDIS: ' + redisStatus);
+  console.log('   JWT_SECRET: [OK] Configure (' + jwtStrength + ')');
+  console.log('   GEMINI_API_KEY: [OK] Configuree');
   console.log('');
 }
 
