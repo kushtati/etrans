@@ -92,15 +92,38 @@ export async function initRedis(): Promise<void> {
   
   connectionAttempted = true;
 
+  // Parse REDIS_URL si fournie (Railway format)
+  let redisConfig: any = {};
+  
+  if (process.env.REDIS_URL) {
+    // Railway fournit redis://default:password@host:port
+    try {
+      const url = new URL(process.env.REDIS_URL);
+      redisConfig = {
+        host: url.hostname,
+        port: parseInt(url.port) || 6379,
+        password: url.password || undefined,
+      };
+      console.log(`[REDIS] Using REDIS_URL: ${url.hostname}:${url.port}`);
+    } catch (e) {
+      console.error('[REDIS] Invalid REDIS_URL format:', e);
+    }
+  } else {
+    // Fallback aux variables séparées
+    redisConfig = {
+      host: process.env.REDIS_HOST || '127.0.0.1',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD || undefined,
+    };
+  }
+
   // En développement, sauter Redis si pas disponible
   if (process.env.NODE_ENV === 'development') {
     console.log('[REDIS] 🔧 Development mode - Trying Redis...');
     
     try {
       const testClient = new Redis({
-        host: process.env.REDIS_HOST || '127.0.0.1',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
+        ...redisConfig,
         maxRetriesPerRequest: 1, // ✅ 1 seul essai
         retryStrategy: () => null, // ✅ Pas de retry automatique
         connectTimeout: 5000, // ✅ Timeout 5s (évite faux positifs)
@@ -136,9 +159,7 @@ export async function initRedis(): Promise<void> {
     console.log('[REDIS] 🚀 Production mode - Redis REQUIRED');
     
     const client = new Redis({
-      host: process.env.REDIS_HOST || '127.0.0.1',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
+      ...redisConfig,
       maxRetriesPerRequest: 3,
       retryStrategy: (times: number) => {
         if (times > 10) {
