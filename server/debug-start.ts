@@ -248,90 +248,32 @@ try {
   log(`  Configuring basic middleware...`);
   app.use(express.json());
   
-  // ============================================
-  // MONTER LES ROUTES API
-  // ============================================
-  
-  log(`  Mounting API routes...`);
-  
-  try {
-    const authRoutes = (await import('./routes/auth')).default;
-    app.use('/api/auth', authRoutes);
-    log('    ✅ /api/auth mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/auth', error);
-  }
-  
-  try {
-    const webauthnRoutes = (await import('./routes/webauthn')).default;
-    app.use('/api/webauthn', webauthnRoutes);
-    log('    ✅ /api/webauthn mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/webauthn', error);
-  }
-  
-  try {
-    const aiRoutes = (await import('./routes/ai')).default;
-    app.use('/api/ai', aiRoutes);
-    log('    ✅ /api/ai mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/ai', error);
-  }
-  
-  try {
-    const financeRoutes = (await import('./routes/finance')).default;
-    app.use('/api/finance', financeRoutes);
-    log('    ✅ /api/finance mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/finance', error);
-  }
-  
-  try {
-    const shipmentsRoutes = (await import('./routes/shipments')).default;
-    app.use('/api/shipments', shipmentsRoutes);
-    log('    ✅ /api/shipments mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/shipments', error);
-  }
-  
-  try {
-    const logsRoutes = (await import('./routes/logs')).default;
-    app.use('/api/logs', logsRoutes);
-    log('    ✅ /api/logs mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/logs', error);
-  }
-  
-  try {
-    const adminLogsRoutes = (await import('./routes/adminLogs')).default;
-    app.use('/api/adminLogs', adminLogsRoutes);
-    log('    ✅ /api/adminLogs mounted');
-  } catch (error) {
-    log('    ❌ Failed to mount /api/adminLogs', error);
-  }
-  
-  log('  ✅ API routes mounting complete');
-  
-  // ============================================
-  // ROUTES DE DEBUG
-  // ============================================
-  
   log(`  Adding health endpoint...`);
   app.get('/health', (req: any, res: any) => {
     res.json({
       status: 'OK',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      message: 'Server is running in DEBUG MODE'
+      message: 'Server is running'
     });
   });
   
   app.get('/', (req: any, res: any) => {
     res.json({
-      service: 'Transit Guinée API - DEBUG MODE',
+      service: 'Transit Guinée API',
       status: 'running',
-      version: '2.2.0-debug',
+      version: '2.2.0',
       timestamp: new Date().toISOString()
+    });
+  });
+  
+  // API health endpoint
+  app.get('/api/health', (req: any, res: any) => {
+    res.json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      message: 'API is running'
     });
   });
   
