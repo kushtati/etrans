@@ -412,7 +412,53 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // CRITIQUE : Stocker référence serveur pour graceful shutdown
 let server: http.Server | https.Server | null = null;
 
-const startServer = () => {
+const startServer = async () => {
+  // ============================================
+  // IMPORTER ET MONTER LES ROUTES DYNAMIQUEMENT
+  // ============================================
+  
+  logger.info('Loading routes dynamically...');
+  try {
+    const authRoutes = (await import('./routes/auth')).default;
+    const webauthnRoutes = (await import('./routes/webauthn')).default;
+    const aiRoutes = (await import('./routes/ai')).default;
+    const financeRoutes = (await import('./routes/finance')).default;
+    const shipmentsRoutes = (await import('./routes/shipments')).default;
+    const logsRoutes = (await import('./routes/logs')).default;
+    const adminLogsRoutes = (await import('./routes/adminLogs')).default;
+    
+    // Monter les routes avec middlewares
+    app.use('/api/auth', noCacheMiddleware);
+    app.use('/api/auth/login', authLimiter);
+    app.use('/api/auth/register', authLimiter);
+    app.use('/api/auth', authRoutes);
+    
+    app.use('/api/webauthn', noCacheMiddleware);
+    app.use('/api/webauthn', webauthnRoutes);
+    
+    app.use('/api/ai', aiRoutes);
+    
+    app.use('/api/finance', noCacheMiddleware);
+    app.use('/api/finance', financeRoutes);
+    
+    app.use('/api/shipments', shipmentsRoutes);
+    
+    app.use('/api/logs', logsRoutes);
+    
+    app.use('/api/admin/logs', adminLogsRoutes);
+    
+    logger.info('All routes mounted successfully');
+  } catch (error) {
+    logger.error('Failed to load routes', {
+      error: error instanceof Error ? error.message : error
+    });
+    throw error;
+  }
+  
+  // ============================================
+  // DÉMARRER SERVEUR HTTP
+  // ============================================
+  
   // Railway gère HTTPS automatiquement via son proxy
   // On utilise toujours HTTP en interne
   if (NODE_ENV === 'production') {
@@ -596,48 +642,9 @@ const initializeServer = async () => {
       }
     }
     
-    // 3. Importer routes dynamiquement (évite les crashs au démarrage)
-    logger.info('Loading routes dynamically...');
-    try {
-      const authRoutes = (await import('./routes/auth')).default;
-      const webauthnRoutes = (await import('./routes/webauthn')).default;
-      const aiRoutes = (await import('./routes/ai')).default;
-      const financeRoutes = (await import('./routes/finance')).default;
-      const shipmentsRoutes = (await import('./routes/shipments')).default;
-      const logsRoutes = (await import('./routes/logs')).default;
-      const adminLogsRoutes = (await import('./routes/adminLogs')).default;
-      
-      // Monter les routes
-      app.use('/api/auth', noCacheMiddleware);
-      app.use('/api/auth/login', authLimiter);
-      app.use('/api/auth/register', authLimiter);
-      app.use('/api/auth', authRoutes);
-      
-      app.use('/api/webauthn', noCacheMiddleware);
-      app.use('/api/webauthn', webauthnRoutes);
-      
-      app.use('/api/ai', aiRoutes);
-      
-      app.use('/api/finance', noCacheMiddleware);
-      app.use('/api/finance', financeRoutes);
-      
-      app.use('/api/shipments', shipmentsRoutes);
-      
-      app.use('/api/logs', logsRoutes);
-      
-      app.use('/api/admin/logs', adminLogsRoutes);
-      
-      logger.info('All routes mounted successfully');
-    } catch (error) {
-      logger.error('Failed to load routes', {
-        error: error instanceof Error ? error.message : error
-      });
-      throw error;
-    }
-    
-    // 4. Démarrer serveur HTTP
+    // 3. Démarrer serveur HTTP (qui charge les routes dynamiquement)
     logger.info('Starting HTTP server...');
-    startServer();
+    await startServer();
     
   } catch (error) {
     logger.error('FATAL ERROR during initialization', {
@@ -651,7 +658,7 @@ const initializeServer = async () => {
     if (NODE_ENV === 'production') {
       logger.error('Starting in DEGRADED MODE...');
       try {
-        startServer();
+        await startServer();
       } catch (startError) {
         logger.error('Failed to start even in degraded mode', { error: startError });
         process.exit(1);
