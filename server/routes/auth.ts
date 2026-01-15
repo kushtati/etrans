@@ -259,6 +259,17 @@ const validateCSRF = async (req: Request, res: Response, next: NextFunction) => 
   const csrfToken = req.headers['x-csrf-token'] as string;
   const sessionId = req.cookies?.csrf_session || req.user?.id || 'anonymous';
   
+  // DEBUG: Logs temporaires
+  console.log('[CSRF DEBUG]', {
+    hasToken: !!csrfToken,
+    sessionId,
+    cookies: Object.keys(req.cookies || {}),
+    headers: {
+      'x-csrf-token': csrfToken?.substring(0, 20) + '...',
+      'cookie': req.headers.cookie?.substring(0, 50) + '...'
+    }
+  });
+  
   if (!csrfToken) {
     logSecurity('CSRF_TOKEN_MISSING', { sessionId, ip: req.ip });
     return res.status(403).json({ 
@@ -269,6 +280,12 @@ const validateCSRF = async (req: Request, res: Response, next: NextFunction) => 
   
   try {
     const storedToken = await redis.get(`csrf:${sessionId}`);
+    
+    console.log('[CSRF COMPARE]', {
+      received: csrfToken.substring(0, 20) + '...',
+      stored: storedToken?.substring(0, 20) + '...',
+      match: csrfToken === storedToken
+    });
     
     if (csrfToken !== storedToken) {
       logSecurity('CSRF_VALIDATION_FAILED', { sessionId, ip: req.ip });
