@@ -10,6 +10,20 @@ View original AI Studio app: https://ai.studio/apps/drive/1Fozi2f-KYsmAQ9VhBVmf9
 
 ---
 
+## 🌐 Déploiement Production
+
+**Backend:** https://etrans-production.up.railway.app ✅ OPÉRATIONNEL  
+**Frontend:** https://etrans-eight.vercel.app ✅ DÉPLOYÉ
+
+**Status:** Tous les systèmes opérationnels (Jan 15, 2026)
+- ✅ 7 routes API montées (auth, webauthn, ai, finance, shipments, logs, adminLogs)
+- ✅ Redis PONG actif
+- ✅ Database Prisma connectée
+- ✅ Rate limiting & JWT Auth fonctionnels
+- ✅ Uptime stable (13+ minutes sans crash)
+
+---
+
 ## 🚨 SÉCURITÉ - IMPORTANT
 
 ### ⚠️ Migration Sécurité Gemini API (Jan 2025)

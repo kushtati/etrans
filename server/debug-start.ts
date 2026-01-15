@@ -354,7 +354,9 @@ try {
     });
   });
   
-  // Route pour visualiser les logs de debug (HTML)
+  // ⚠️ ROUTES DEBUG (DÉSACTIVÉES EN PRODUCTION POUR SÉCURITÉ)
+  // Décommenter uniquement si besoin de diagnostic urgent
+  /*
   app.get('/debug-logs', (req: any, res: any) => {
     try {
       const logContent = fs.readFileSync(LOG_FILE, 'utf8');
@@ -403,26 +405,9 @@ try {
       });
     }
   });
+  */
   
-  // Route pour raw logs (texte brut)
-  app.get('/debug-logs/raw', (req: any, res: any) => {
-    try {
-      const logContent = fs.readFileSync(LOG_FILE, 'utf8');
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.send(logContent);
-    } catch (error) {
-      res.status(500).send('Log file not found or unreadable');
-    }
-  });
-  
-  // Route pour télécharger les logs
-  app.get('/debug-logs/download', (req: any, res: any) => {
-    try {
-      res.download(LOG_FILE, 'startup-debug.log');
-    } catch (error) {
-      res.status(500).send('Log file not found');
-    }
-  });
+  // Routes debug désactivées - end
   
   log(`  Creating HTTP server...`);
   const server = http.createServer(app);
