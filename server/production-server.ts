@@ -339,7 +339,9 @@ try {
   
   log(`  Configuring basic middleware...`);
   const cookieParser = (await import('cookie-parser')).default;
-  app.use(cookieParser());
+  // Cookie secret pour signatures (HMAC)
+  const cookieSecret = process.env.COOKIE_SECRET || process.env.JWT_SECRET || 'fallback-dev-secret';
+  app.use(cookieParser(cookieSecret));
   app.use(express.json());
   
   // ============================================
