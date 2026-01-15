@@ -225,24 +225,6 @@ export async function initRedis(): Promise<void> {
   isUsingFallback = true;
   memoryFallback = new InMemoryStore();
 }
-        logger.error('ALERT: Redis error threshold exceeded', { count: errorCount });
-      }
-    });
-
-    client.on('ready', () => {
-      logger.info('Redis production ready');
-      errorCount = 0; // Reset compteur si reconnexion
-    });
-
-    try {
-      await client.connect();
-      redisClient = client;
-    } catch (error: any) {
-      logError('CRITICAL: Cannot connect in production', error);
-      throw new Error('Redis connection required in production');
-    }
-  }
-}
 
 // ============================================
 // API UNIFIÉE
