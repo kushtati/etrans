@@ -31,12 +31,20 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
+console.log('='.repeat(60));
+console.log('[RAILWAY] SERVER STARTING - STEP 1: Loading environment');
+console.log('='.repeat(60));
+
 // 🔐 CRITIQUE : Charger env AVANT tout import
 import './config/env';
+
+console.log('[RAILWAY] STEP 2: Environment loaded, starting validation');
 
 // 🔒 CRITIQUE : Valider environnement AVANT démarrage
 import { validateEnvironment } from './config/validateEnv';
 validateEnvironment(); // ⛔ CRASH si configuration invalide
+
+console.log('[RAILWAY] STEP 3: Validation complete, loading dependencies');
 
 import fs from 'fs';
 import path from 'path';
