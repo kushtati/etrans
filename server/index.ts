@@ -59,14 +59,8 @@ import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
 
-// Routes (importées après chargement env)
-import authRoutes from './routes/auth';
-import webauthnRoutes from './routes/webauthn';
-import aiRoutes from './routes/ai';
-import financeRoutes from './routes/finance';
-import shipmentsRoutes from './routes/shipments';
-import logsRoutes from './routes/logs';
-import adminLogsRoutes from './routes/adminLogs';
+// ⚠️ Routes importées dynamiquement dans initializeServer() pour éviter les crashs
+// (imports top-level supprimés pour sécurité)
 
 // Services
 import { initAuditDB } from './services/auditService';
@@ -367,30 +361,8 @@ const noCacheMiddleware = (req: Request, res: Response, next: NextFunction) => {
 };
 
 // Auth routes (avec anti-cache + rate limiting strict)
-app.use('/api/auth', noCacheMiddleware);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
-app.use('/api/auth', authRoutes);
-
-// WebAuthn routes (biométrie - anti-cache)
-app.use('/api/webauthn', noCacheMiddleware);
-app.use('/api/webauthn', webauthnRoutes);
-
-// 🤖 AI routes (protected - Gemini API sécurisée)
-app.use('/api/ai', aiRoutes);
-
-// Finance routes (protected by permissions - anti-cache)
-app.use('/api/finance', noCacheMiddleware);
-app.use('/api/finance', financeRoutes);
-
-// Shipments routes (protected by permissions)
-app.use('/api/shipments', shipmentsRoutes);
-
-// 📊 Logs routes (frontend logs collection)
-app.use('/api/logs', logsRoutes);
-
-// 🔧 Admin logs routes (stats, cleanup, audit)
-app.use('/api/admin/logs', adminLogsRoutes);
+// ⚠️ Routes montées dynamiquement dans initializeServer()
+// (code déplacé pour éviter les imports top-level)
 
 // Static files (frontend build)
 if (NODE_ENV === 'production') {
@@ -624,7 +596,46 @@ const initializeServer = async () => {
       }
     }
     
-    // 3. Démarrer serveur HTTP
+    // 3. Importer routes dynamiquement (évite les crashs au démarrage)
+    logger.info('Loading routes dynamically...');
+    try {
+      const authRoutes = (await import('./routes/auth')).default;
+      const webauthnRoutes = (await import('./routes/webauthn')).default;
+      const aiRoutes = (await import('./routes/ai')).default;
+      const financeRoutes = (await import('./routes/finance')).default;
+      const shipmentsRoutes = (await import('./routes/shipments')).default;
+      const logsRoutes = (await import('./routes/logs')).default;
+      const adminLogsRoutes = (await import('./routes/adminLogs')).default;
+      
+      // Monter les routes
+      app.use('/api/auth', noCacheMiddleware);
+      app.use('/api/auth/login', authLimiter);
+      app.use('/api/auth/register', authLimiter);
+      app.use('/api/auth', authRoutes);
+      
+      app.use('/api/webauthn', noCacheMiddleware);
+      app.use('/api/webauthn', webauthnRoutes);
+      
+      app.use('/api/ai', aiRoutes);
+      
+      app.use('/api/finance', noCacheMiddleware);
+      app.use('/api/finance', financeRoutes);
+      
+      app.use('/api/shipments', shipmentsRoutes);
+      
+      app.use('/api/logs', logsRoutes);
+      
+      app.use('/api/admin/logs', adminLogsRoutes);
+      
+      logger.info('All routes mounted successfully');
+    } catch (error) {
+      logger.error('Failed to load routes', {
+        error: error instanceof Error ? error.message : error
+      });
+      throw error;
+    }
+    
+    // 4. Démarrer serveur HTTP
     logger.info('Starting HTTP server...');
     startServer();
     
