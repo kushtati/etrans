@@ -345,30 +345,10 @@ try {
   app.use(express.json());
   
   // ============================================
-  // MONTER LES ROUTES IMPORTÉES AVEC SUCCÈS
+  // DEBUG ENDPOINTS (AVANT ROUTES POUR PRIORITÉ)
   // ============================================
   
-  log(`\n🔗 Montage des ${loadedRoutes.length} routes chargées...`);
-  
-  for (const { name, router } of loadedRoutes) {
-    try {
-      const routePath = `/api/${name}`;
-      app.use(routePath, router);
-      log(`  ✅ Monté: ${routePath}`);
-    } catch (error) {
-      log(`  ❌ Échec montage route ${name}:`, error);
-    }
-  }
-  
-  log(`  Adding health endpoint...`);
-  app.get('/health', (req: any, res: any) => {
-    res.json({
-      status: 'OK',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      message: 'Server is running'
-    });
-  });
+  log(`  Adding debug endpoints...`);
   
   // DEBUG: Endpoint diagnostic Redis
   app.get('/api/debug-redis', async (req: any, res: any) => {
@@ -403,6 +383,33 @@ try {
         stack: (error as Error).stack?.split('\n').slice(0, 3)
       });
     }
+  });
+  log(`  ✅ Debug endpoints configurés`);
+  
+  // ============================================
+  // MONTER LES ROUTES IMPORTÉES AVEC SUCCÈS
+  // ============================================
+  
+  log(`\n🔗 Montage des ${loadedRoutes.length} routes chargées...`);
+  
+  for (const { name, router } of loadedRoutes) {
+    try {
+      const routePath = `/api/${name}`;
+      app.use(routePath, router);
+      log(`  ✅ Monté: ${routePath}`);
+    } catch (error) {
+      log(`  ❌ Échec montage route ${name}:`, error);
+    }
+  }
+  
+  log(`  Adding health endpoint...`);
+  app.get('/health', (req: any, res: any) => {
+    res.json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      message: 'Server is running'
+    });
   });
   
   app.get('/', (req: any, res: any) => {
