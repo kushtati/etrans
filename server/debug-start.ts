@@ -149,12 +149,46 @@ try {
 }
 
 // ============================================
-// ÉTAPE 6 : IMPORTER ROUTES
+// ÉTAPE 6 : VÉRIFIER PRISMA CLIENT
 // ============================================
 
-log('\n🛣️  Import routes...');
+log('\n🔍 Vérification Prisma Client...');
 
-const routes = [
+try {
+  log('  Importing @prisma/client...');
+  const { PrismaClient } = await import('@prisma/client');
+  
+  log('  Creating Prisma instance...');
+  const testPrisma = new PrismaClient();
+  
+  log('  Testing database connection...');
+  await testPrisma.$queryRaw`SELECT 1`;
+  
+  log('  ✅ Prisma Client opérationnel');
+  await testPrisma.$disconnect();
+} catch (error: any) {
+  log('  ❌ PRISMA CLIENT FAILED:', error.message);
+  log('  Stack:', error.stack);
+  
+  if (error.message.includes('prisma generate')) {
+    log('  [DIAGNOSTIC] Prisma Client pas généré ! Exécutez: npx prisma generate');
+  } else if (error.message.includes('DATABASE_URL')) {
+    log('  [DIAGNOSTIC] DATABASE_URL invalide ou inaccessible');
+  }
+  
+  // Ne pas crash, continuer pour voir si routes peuvent loader sans DB
+}
+
+// ============================================
+// ÉTAPE 7 : IMPORTER ET MONTER ROUTES (UN PAR UN)
+// ============================================
+
+log('\n🛣️  Import et montage routes (diagnostic mode)...');
+
+// Stocker les routes importées avec succès
+const loadedRoutes: { name: string; router: any }[] = [];
+
+const routesToTest = [
   'auth',
   'webauthn',
   'ai',
@@ -164,19 +198,46 @@ const routes = [
   'adminLogs'
 ];
 
-for (const route of routes) {
+for (const routeName of routesToTest) {
   try {
-    log(`  Importing routes/${route}...`);
-    await import(`./routes/${route}`);
-    log(`  ✅ routes/${route} importé`);
-  } catch (error) {
-    log(`  ❌ Erreur import routes/${route}`, error);
-    // Continuer malgré l'erreur (certaines routes peuvent être optionnelles)
+    log(`  [IMPORT] Tentative import routes/${routeName}...`);
+    
+    // Import dynamique avec détails d'erreur
+    const routeModule = await import(`./routes/${routeName}`);
+    
+    log(`  [SUCCESS] routes/${routeName} importé`);
+    
+    // Vérifier que le module exporte un router
+    if (routeModule.default) {
+      loadedRoutes.push({ name: routeName, router: routeModule.default });
+      log(`  [ROUTER] routes/${routeName} a un export default`);
+    } else {
+      log(`  [WARNING] routes/${routeName} n'a pas d'export default`, Object.keys(routeModule));
+    }
+    
+  } catch (error: any) {
+    log(`  [CRASH] ❌ routes/${routeName} a crashé lors de l'import`);
+    log(`  [ERROR] Message: ${error.message}`);
+    log(`  [ERROR] Stack:`, error.stack);
+    log(`  [ERROR] Code: ${error.code || 'N/A'}`);
+    
+    // Détails supplémentaires pour diagnostiquer
+    if (error.message.includes('Cannot find module')) {
+      log(`  [DIAGNOSTIC] Problème de casse ou module manquant`);
+    } else if (error.message.includes('circular')) {
+      log(`  [DIAGNOSTIC] Dépendance circulaire détectée`);
+    } else if (error.message.includes('Prisma')) {
+      log(`  [DIAGNOSTIC] Problème avec Prisma Client`);
+    } else if (error.message.includes('await')) {
+      log(`  [DIAGNOSTIC] Problème avec top-level await`);
+    }
   }
 }
 
+log(`\n📊 Résumé: ${loadedRoutes.length}/${routesToTest.length} routes chargées avec succès`);
+
 // ============================================
-// ÉTAPE 7 : INITIALISER AUDIT DB
+// ÉTAPE 8 : INITIALISER AUDIT DB
 // ============================================
 
 log('\n🗄️  Initialisation Audit DB...');
@@ -195,7 +256,7 @@ try {
 }
 
 // ============================================
-// ÉTAPE 8 : INITIALISER REDIS
+// ÉTAPE 9 : INITIALISER REDIS
 // ============================================
 
 log('\n🔴 Initialisation Redis...');
@@ -230,7 +291,7 @@ try {
 }
 
 // ============================================
-// ÉTAPE 9 : CRÉER SERVEUR HTTP
+// ÉTAPE 10 : CRÉER SERVEUR HTTP
 // ============================================
 
 log('\n🌐 Création serveur HTTP...');
@@ -247,6 +308,22 @@ try {
   
   log(`  Configuring basic middleware...`);
   app.use(express.json());
+  
+  // ============================================
+  // MONTER LES ROUTES IMPORTÉES AVEC SUCCÈS
+  // ============================================
+  
+  log(`\n🔗 Montage des ${loadedRoutes.length} routes chargées...`);
+  
+  for (const { name, router } of loadedRoutes) {
+    try {
+      const routePath = `/api/${name}`;
+      app.use(routePath, router);
+      log(`  ✅ Monté: ${routePath}`);
+    } catch (error) {
+      log(`  ❌ Échec montage route ${name}:`, error);
+    }
+  }
   
   log(`  Adding health endpoint...`);
   app.get('/health', (req: any, res: any) => {
