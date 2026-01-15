@@ -338,6 +338,8 @@ try {
   log(`  ✅ CORS configuré`);
   
   log(`  Configuring basic middleware...`);
+  const cookieParser = (await import('cookie-parser')).default;
+  app.use(cookieParser());
   app.use(express.json());
   
   // ============================================

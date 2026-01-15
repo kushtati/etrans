@@ -216,7 +216,19 @@ const generateJWT = (user: User): string => {
 router.get('/csrf-token', async (req: Request, res: Response) => {
   try {
     const token = crypto.randomBytes(32).toString('hex');
-    const sessionId = req.user?.id || req.ip || 'anonymous';
+    
+    // Créer ou récupérer sessionId stable depuis cookie
+    let sessionId = req.cookies?.csrf_session;
+    if (!sessionId) {
+      sessionId = crypto.randomBytes(16).toString('hex');
+      res.cookie('csrf_session', sessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 60 * 60 * 1000, // 1h
+        path: '/'
+      });
+    }
     
     // Stocker dans Redis avec TTL 1h
     await redis.set(`csrf:${sessionId}`, token, 3600);
@@ -245,7 +257,7 @@ router.get('/csrf-token', async (req: Request, res: Response) => {
  */
 const validateCSRF = async (req: Request, res: Response, next: NextFunction) => {
   const csrfToken = req.headers['x-csrf-token'] as string;
-  const sessionId = req.user?.id || req.ip || 'anonymous';
+  const sessionId = req.cookies?.csrf_session || req.user?.id || 'anonymous';
   
   if (!csrfToken) {
     logSecurity('CSRF_TOKEN_MISSING', { sessionId, ip: req.ip });
