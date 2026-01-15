@@ -80,8 +80,8 @@ const prisma = new PrismaClient();
 // VERSION & BUILD INFO
 // ============================================
 const SERVER_VERSION = '2.2.0';
-const BUILD_DATE = '2026-01-14';
-const COMMIT_MARKER = 'a2c0025-tsx-production';
+const BUILD_DATE = '2026-01-15';
+const COMMIT_MARKER = 'force-redeploy-railway-debug';
 
 console.log(`
 ╔═══════════════════════════════════════════════════════════╗
