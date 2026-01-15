@@ -382,6 +382,16 @@ try {
       });
     }
   });
+  
+  // DEBUG: Endpoint liste routes montées
+  app.get('/api/debug-routes', (req: any, res: any) => {
+    res.json({
+      loadedRoutesCount: loadedRoutes.length,
+      expectedRoutesCount: routesToTest.length,
+      loadedRoutes: loadedRoutes.map(r => r.name),
+      expectedRoutes: routesToTest
+    });
+  });
   log(`  ✅ Debug endpoints configurés`);
   
   // ============================================
