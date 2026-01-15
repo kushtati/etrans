@@ -19,7 +19,10 @@ export interface AuthResponse {
   tfaMethod?: 'sms' | 'email' | 'app';
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// Backend Railway en production, localhost en dev
+const API_BASE = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : 'http://localhost:3000/api';
 
 /**
  * Hash password using SHA-256 (client-side pre-hashing)

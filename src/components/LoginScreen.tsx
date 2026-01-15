@@ -12,6 +12,7 @@ import {
   decodeJWTUnsafe
 } from '../utils/authSecurity';
 import { logger } from '../services/logger';
+import { API_BASE_URL } from '../config/environment';
 
 interface LoginScreenProps {
   onLogin: (role: Role, token: string) => void;
@@ -50,7 +51,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     
-    fetch('/api/auth/csrf-token', { signal: controller.signal })
+    fetch(`${API_BASE_URL}/auth/csrf-token`, { 
+      signal: controller.signal,
+      credentials: 'include' // Crucial pour cookies cross-origin
+    })
       .then(res => res.json())
       .then(data => {
         clearTimeout(timeoutId);
@@ -176,7 +180,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       const passwordToSend = password;
 
       // 6. Appel API backend
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

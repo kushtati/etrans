@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config/environment';
 
 export const BiometricSetup: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ export const BiometricSetup: React.FC = () => {
 
   const loadDevices = async () => {
     try {
-      const res = await fetch('/api/webauthn/devices', {
+      const res = await fetch(`${API_BASE_URL}/webauthn/devices`, {
         credentials: 'include'
       });
       if (res.ok) {
@@ -44,7 +45,7 @@ export const BiometricSetup: React.FC = () => {
     
     try {
       // 1. Récupérer les options d'enregistrement du serveur
-      const optionsResponse = await fetch('/api/webauthn/register-options', {
+      const optionsResponse = await fetch(`${API_BASE_URL}/webauthn/register-options`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
@@ -116,7 +117,7 @@ export const BiometricSetup: React.FC = () => {
       }
       
       // 6. Envoyer au serveur pour stockage
-      const verifyResponse = await fetch('/api/webauthn/register-verify', {
+      const verifyResponse = await fetch(`${API_BASE_URL}/webauthn/register-verify`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

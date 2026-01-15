@@ -15,8 +15,10 @@ export const IS_DEVELOPMENT = NODE_ENV === 'development';
 // Mode mock (UNIQUEMENT en développement)
 export const IS_MOCK_MODE = import.meta.env.VITE_USE_MOCK === 'true' && IS_DEVELOPMENT;
 
-// Backend API
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Backend API - Railway en production, proxy local en dev
+export const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 
 // Logging
 export const DEBUG_MODE = import.meta.env.VITE_DEBUG === 'true';

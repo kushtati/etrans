@@ -8,7 +8,10 @@
 import { Shipment, Document, Expense, ShipmentStatus, DeliveryInfo } from '../types';
 import { logger } from './logger';
 
-const API_BASE_URL = '/api';
+// Utiliser Railway backend en production, URL relative seulement en dev avec proxy
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 
 /**
  * Retry logic pour réseau 3G instable Guinée

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTransit } from '../hooks/useTransitSelectors';
 import { useAuth } from '../hooks/useTransitSelectors';
 import { logger } from '../services/logger';
+import { API_BASE_URL } from '../config/environment';
 
 export const LockScreen: React.FC = () => {
   const { currentUserName, quickUnlock, isLocked } = useTransit();
@@ -70,7 +71,7 @@ export const LockScreen: React.FC = () => {
     
     try {
       // 1. Récupérer les options du backend
-      const optionsResponse = await fetch('/api/webauthn/unlock-options', {
+      const optionsResponse = await fetch(`${API_BASE_URL}/webauthn/unlock-options`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -146,7 +147,7 @@ export const LockScreen: React.FC = () => {
       ).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 
       // 4. Vérifier la signature côté backend
-      const verifyResponse = await fetch('/api/webauthn/unlock-verify', {
+      const verifyResponse = await fetch(`${API_BASE_URL}/webauthn/unlock-verify`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

@@ -13,7 +13,7 @@ import {
   validateStatusChange, 
   canCreateShipment 
 } from '../utils/permissions';
-import { IS_MOCK_MODE, validateEnvironment } from '../config/environment';
+import { IS_MOCK_MODE, validateEnvironment, API_BASE_URL } from '../config/environment';
 
 // ============================================
 // CONTEXT
@@ -749,7 +749,7 @@ export const TransitProvider: React.FC<TransitProviderProps> = ({ children }) =>
 
       if (password) {
         // Méthode 1 : Déverrouillage par mot de passe
-        const response = await fetch('/api/auth/unlock', {
+        const response = await fetch(`${API_BASE_URL}/auth/unlock`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },

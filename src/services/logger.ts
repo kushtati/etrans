@@ -12,6 +12,7 @@
  */
 
 import { LOG_CONFIG, LOG_LEVELS, type LogLevel, shouldLogLevel } from '../config/logger.config';
+import { API_BASE_URL } from '../config/environment';
 
 interface LogEntry {
   level: LogLevel;
@@ -87,11 +88,11 @@ class Logger {
     try {
       // navigator.sendBeacon = Fire-and-forget (ne bloque pas l'app)
       const blob = new Blob([JSON.stringify(entry)], { type: 'application/json' });
-      const sent = navigator.sendBeacon('/api/logs', blob);
+      const sent = navigator.sendBeacon(`${API_BASE_URL}/logs`, blob);
       
       // Fallback fetch si sendBeacon fail
       if (!sent) {
-        await fetch('/api/logs', {
+        await fetch(`${API_BASE_URL}/logs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(entry),

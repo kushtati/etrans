@@ -6,6 +6,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { LockScreen } from './components/LockScreen';
 import { MockWarningBanner } from './components/MockWarningBanner';
 import { logger } from './services/logger';
+import { API_BASE_URL } from './config/environment';
 import { 
   Zap, LogOut, Search, Bell, LayoutGrid, Calculator, PieChart, MessageSquare, Send, 
   Wifi, WifiOff, User, Settings
@@ -158,7 +159,7 @@ const AppLayout: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      const response = await fetch('/api/auth/logout', {
+      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -202,7 +203,7 @@ const AppLayout: React.FC = () => {
 
     try {
       // ✅ Call backend API proxy /api/assistant
-      const response = await fetch('/api/assistant', {
+      const response = await fetch(`${API_BASE_URL}/assistant`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
