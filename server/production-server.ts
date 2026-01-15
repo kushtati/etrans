@@ -383,15 +383,6 @@ try {
     }
   });
   
-  // DEBUG: Endpoint liste routes montées
-  app.get('/api/debug-routes', (req: any, res: any) => {
-    res.json({
-      loadedRoutesCount: loadedRoutes.length,
-      expectedRoutesCount: routesToTest.length,
-      loadedRoutes: loadedRoutes.map(r => r.name),
-      expectedRoutes: routesToTest
-    });
-  });
   log(`  ✅ Debug endpoints configurés`);
   
   // ============================================
@@ -417,6 +408,17 @@ try {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       message: 'Server is running'
+    });
+  });
+  
+  // DEBUG: Endpoint liste routes (défini APRÈS montage pour éviter écrasement)
+  app.get('/api/debug-routes', (req: any, res: any) => {
+    res.json({
+      loadedRoutesCount: loadedRoutes.length,
+      expectedRoutesCount: routesToTest.length,
+      loadedRoutes: loadedRoutes.map(r => r.name),
+      expectedRoutes: routesToTest,
+      mountedPaths: loadedRoutes.map(r => `/api/${r.name}`)
     });
   });
   
