@@ -213,27 +213,17 @@ const generateJWT = (user: User): string => {
  * GET /api/auth/csrf-token
  * Génère et stocke un token CSRF dans Redis pour validation
  */
+/**
+ * GET /api/auth/csrf-token
+ * Génère token CSRF (Double Submit Cookie Pattern - pas de serveur state)
+ */
 router.get('/csrf-token', async (req: Request, res: Response) => {
   try {
+    // Générer token aléatoire cryptographique
     const token = crypto.randomBytes(32).toString('hex');
     
-    // Créer ou récupérer sessionId stable depuis cookie
-    let sessionId = req.cookies?.csrf_session;
-    if (!sessionId) {
-      sessionId = crypto.randomBytes(16).toString('hex');
-      res.cookie('csrf_session', sessionId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 60 * 60 * 1000, // 1h
-        path: '/'
-      });
-    }
-    
-    // Stocker dans Redis avec TTL 1h
-    await redis.set(`csrf:${sessionId}`, token, 3600);
-    
     // Créer cookie XSRF-TOKEN pour validation cross-domain
+    // httpOnly=false pour que JS puisse le lire
     res.cookie('XSRF-TOKEN', token, {
       httpOnly: false, // Frontend doit pouvoir lire le token
       secure: process.env.NODE_ENV === 'production', // HTTPS uniquement en prod
@@ -273,47 +263,50 @@ router.get('/debug/csrf/:sessionId', async (req: Request, res: Response) => {
 });
 
 /**
- * Middleware validation CSRF
+ * Middleware validation CSRF - Double Submit Cookie Pattern
+ * Plus simple et fiable que Redis (pas de problèmes de sessionId)
+ * Principe : Le token dans le header doit matcher le token dans le cookie
  */
 const validateCSRF = async (req: Request, res: Response, next: NextFunction) => {
-  const csrfToken = req.headers['x-csrf-token'] as string;
-  const sessionId = req.cookies?.csrf_session || req.user?.id || 'anonymous';
+  const headerToken = req.headers['x-csrf-token'] as string;
+  const cookieToken = req.cookies?.['XSRF-TOKEN'];
   
   // DEBUG: Logs temporaires
   console.log('[CSRF DEBUG]', {
-    hasToken: !!csrfToken,
-    sessionId,
-    cookies: Object.keys(req.cookies || {}),
-    headers: {
-      'x-csrf-token': csrfToken?.substring(0, 20) + '...',
-      'cookie': req.headers.cookie?.substring(0, 50) + '...'
-    }
+    hasHeaderToken: !!headerToken,
+    hasCookieToken: !!cookieToken,
+    headerPreview: headerToken?.substring(0, 20) + '...',
+    cookiePreview: cookieToken?.substring(0, 20) + '...',
+    match: headerToken === cookieToken
   });
   
-  if (!csrfToken) {
-    logSecurity('CSRF_TOKEN_MISSING', { sessionId, ip: req.ip });
+  if (!headerToken) {
+    logSecurity('CSRF_TOKEN_MISSING', { ip: req.ip });
     return res.status(403).json({ 
       success: false, 
-      message: 'Token CSRF manquant' 
+      message: 'Token CSRF manquant dans header' 
     });
   }
   
-  try {
-    const storedToken = await redis.get(`csrf:${sessionId}`);
-    
-    console.log('[CSRF COMPARE]', {
-      received: csrfToken.substring(0, 20) + '...',
-      stored: storedToken?.substring(0, 20) + '...',
-      match: csrfToken === storedToken
+  if (!cookieToken) {
+    logSecurity('CSRF_COOKIE_MISSING', { ip: req.ip });
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Token CSRF manquant dans cookie' 
     });
-    
-    if (csrfToken !== storedToken) {
-      logSecurity('CSRF_VALIDATION_FAILED', { sessionId, ip: req.ip });
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Token CSRF invalide' 
-      });
-    }
+  }
+  
+  if (headerToken !== cookieToken) {
+    logSecurity('CSRF_TOKEN_MISMATCH', { ip: req.ip });
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Token CSRF invalide (mismatch)' 
+    });
+  }
+  
+  // Validation réussie
+  next();
+};
     
     next();
   } catch (error) {
