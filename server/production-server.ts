@@ -332,8 +332,8 @@ try {
     ],
     credentials: true, // CRITIQUE : Permet envoi cookies cross-origin
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-    exposedHeaders: ['Set-Cookie']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'x-csrf-token'],
+    exposedHeaders: ['Set-Cookie', 'XSRF-TOKEN']
   }));
   log(`  ✅ CORS configuré`);
   

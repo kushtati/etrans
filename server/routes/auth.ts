@@ -221,6 +221,15 @@ router.get('/csrf-token', async (req: Request, res: Response) => {
     // Stocker dans Redis avec TTL 1h
     await redis.set(`csrf:${sessionId}`, token, 3600);
     
+    // Créer cookie XSRF-TOKEN pour validation cross-domain
+    res.cookie('XSRF-TOKEN', token, {
+      httpOnly: false, // Frontend doit pouvoir lire le token
+      secure: process.env.NODE_ENV === 'production', // HTTPS uniquement en prod
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Cross-domain en prod
+      maxAge: 60 * 60 * 1000, // 1h
+      path: '/'
+    });
+    
     res.json({ token });
   } catch (error) {
     logError('CSRF token generation failed', error as Error);
