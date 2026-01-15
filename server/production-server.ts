@@ -363,18 +363,16 @@ try {
       await redis.set(testKey, 'functioning', 10); // TTL 10s
       const testVal = await redis.get(testKey);
       
-      // Compter clés CSRF
-      const csrfKeys = await redis.keys('csrf:*').catch(() => []);
-      
       res.json({
         status: pingResult === 'PONG' ? 'CONNECTED' : 'DISCONNECTED',
         ping: pingResult,
-        testOperation: testVal === 'functioning' ? 'SUCCESS' : 'FAILED',
-        csrfKeysCount: Array.isArray(csrfKeys) ? csrfKeys.length : 0,
+        testWrite: testVal === 'functioning' ? 'SUCCESS' : 'FAILED',
+        testValue: testVal,
         env: {
           hasRedisUrl: !!process.env.REDIS_URL,
-          redisUrlPrefix: process.env.REDIS_URL?.substring(0, 20) + '...',
-          hasRedisHost: !!process.env.REDIS_HOST
+          redisUrlPrefix: process.env.REDIS_URL?.substring(0, 25) + '...',
+          hasRedisHost: !!process.env.REDIS_HOST,
+          nodeEnv: process.env.NODE_ENV
         }
       });
     } catch (error) {
