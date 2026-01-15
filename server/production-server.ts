@@ -370,6 +370,41 @@ try {
     });
   });
   
+  // DEBUG: Endpoint diagnostic Redis
+  app.get('/api/debug-redis', async (req: any, res: any) => {
+    try {
+      const { redis } = await import('./config/redis');
+      
+      // Test connexion
+      const pingResult = await redis.ping().catch((e: Error) => `Error: ${e.message}`);
+      
+      // Test écriture/lecture
+      const testKey = `test_${Date.now()}`;
+      await redis.set(testKey, 'functioning', 10); // TTL 10s
+      const testVal = await redis.get(testKey);
+      
+      // Compter clés CSRF
+      const csrfKeys = await redis.keys('csrf:*').catch(() => []);
+      
+      res.json({
+        status: pingResult === 'PONG' ? 'CONNECTED' : 'DISCONNECTED',
+        ping: pingResult,
+        testOperation: testVal === 'functioning' ? 'SUCCESS' : 'FAILED',
+        csrfKeysCount: Array.isArray(csrfKeys) ? csrfKeys.length : 0,
+        env: {
+          hasRedisUrl: !!process.env.REDIS_URL,
+          redisUrlPrefix: process.env.REDIS_URL?.substring(0, 20) + '...',
+          hasRedisHost: !!process.env.REDIS_HOST
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        error: (error as Error).message,
+        stack: (error as Error).stack?.split('\n').slice(0, 3)
+      });
+    }
+  });
+  
   app.get('/', (req: any, res: any) => {
     res.json({
       service: 'Transit Guinée API',

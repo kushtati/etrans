@@ -253,6 +253,26 @@ router.get('/csrf-token', async (req: Request, res: Response) => {
 });
 
 /**
+ * DEBUG: Vérifier token CSRF dans Redis
+ * GET /api/auth/debug/csrf/:sessionId
+ */
+router.get('/debug/csrf/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const storedToken = await redis.get(`csrf:${sessionId}`);
+    
+    res.json({
+      sessionId,
+      hasToken: !!storedToken,
+      tokenPreview: storedToken ? storedToken.substring(0, 20) + '...' : null,
+      redisKeys: await redis.keys('csrf:*').then(keys => keys.length)
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
  * Middleware validation CSRF
  */
 const validateCSRF = async (req: Request, res: Response, next: NextFunction) => {
