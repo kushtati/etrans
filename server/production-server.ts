@@ -320,6 +320,23 @@ try {
   log(`  Creating Express app...`);
   const app = express();
   
+  log(`  Configuring CORS...`);
+  const cors = (await import('cors')).default;
+  
+  // Configuration CORS pour Vercel frontend
+  app.use(cors({
+    origin: [
+      'http://localhost:5173', // Dev local
+      'https://etrans-eight.vercel.app', // Production Vercel
+      'https://etrans-production.up.railway.app' // Backend (pour tests)
+    ],
+    credentials: true, // CRITIQUE : Permet envoi cookies cross-origin
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    exposedHeaders: ['Set-Cookie']
+  }));
+  log(`  ✅ CORS configuré`);
+  
   log(`  Configuring basic middleware...`);
   app.use(express.json());
   

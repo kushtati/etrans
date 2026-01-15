@@ -364,7 +364,7 @@ router.post(
       res.cookie('auth_token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' requis pour cross-origin
         maxAge: 24 * 60 * 60 * 1000, // 24h
         path: '/',
         domain: process.env.NODE_ENV === 'development' ? 'localhost' : undefined
@@ -459,7 +459,7 @@ router.post(
       res.cookie('auth_token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' requis pour cross-origin
         maxAge: 24 * 60 * 60 * 1000,
         path: '/',
         domain: process.env.NODE_ENV === 'development' ? 'localhost' : undefined
@@ -830,7 +830,7 @@ router.post('/refresh', authenticateJWT, validateCSRF, async (req: Request, res:
     res.cookie('auth_token', newToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' requis pour cross-origin
       maxAge: 24 * 60 * 60 * 1000, // 24h
       path: '/',
       domain: process.env.NODE_ENV === 'development' ? 'localhost' : undefined
