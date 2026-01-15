@@ -212,6 +212,9 @@ const routesToTest = [
   'adminLogs'
 ];
 
+// Stocker les erreurs d'import pour diagnostic
+const importErrors: { route: string; error: string; stack: string }[] = [];
+
 for (const routeName of routesToTest) {
   try {
     log(`  [IMPORT] Tentative import routes/${routeName}...`);
@@ -234,6 +237,13 @@ for (const routeName of routesToTest) {
     log(`  [ERROR] Message: ${error.message}`);
     log(`  [ERROR] Stack:`, error.stack);
     log(`  [ERROR] Code: ${error.code || 'N/A'}`);
+    
+    // Stocker l'erreur pour diagnostic
+    importErrors.push({
+      route: routeName,
+      error: error.message,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n') || 'N/A'
+    });
     
     // Détails supplémentaires pour diagnostiquer
     if (error.message.includes('Cannot find module')) {
@@ -418,7 +428,9 @@ try {
       expectedRoutesCount: routesToTest.length,
       loadedRoutes: loadedRoutes.map(r => r.name),
       expectedRoutes: routesToTest,
-      mountedPaths: loadedRoutes.map(r => `/api/${r.name}`)
+      mountedPaths: loadedRoutes.map(r => `/api/${r.name}`),
+      failedRoutes: routesToTest.filter(r => !loadedRoutes.find(lr => lr.name === r)),
+      importErrors: importErrors
     });
   });
   
