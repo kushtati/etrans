@@ -317,6 +317,24 @@ export const redis = {
     return !isUsingFallback && redisClient !== null;
   },
 
+  async ping(): Promise<string> {
+    if (isUsingFallback) {
+      return 'PONG (memory fallback)';
+    }
+    
+    if (!redisClient) {
+      return 'PONG (no client)';
+    }
+    
+    try {
+      const result = await redisClient.ping();
+      return result || 'PONG';
+    } catch (error: any) {
+      logError('Redis ping error', error);
+      return 'ERROR';
+    }
+  },
+
   async disconnect(): Promise<void> {
     if (redisClient) {
       await redisClient.quit();
