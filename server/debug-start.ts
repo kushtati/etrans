@@ -73,6 +73,12 @@ for (const file of requiredFiles) {
 }
 
 // ============================================
+// FONCTION PRINCIPALE ASYNC
+// ============================================
+
+async function main() {
+
+// ============================================
 // ÉTAPE 3 : CHARGER CONFIGURATION ENV
 // ============================================
 
@@ -364,6 +370,8 @@ try {
   process.exit(1);
 }
 
+} // Fin de la fonction main()
+
 // ============================================
 // HANDLERS ERREURS GLOBALES
 // ============================================
@@ -388,5 +396,14 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// ============================================
+// LANCEMENT
+// ============================================
+
 log('\n✅ Debug startup script loaded successfully');
-log('Waiting for server initialization...\n');
+log('Starting initialization...\n');
+
+main().catch((error) => {
+  log('❌ FATAL ERROR in main()', error);
+  process.exit(1);
+});
