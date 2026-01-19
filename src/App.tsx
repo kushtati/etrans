@@ -6,7 +6,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { LockScreen } from './components/LockScreen';
 import { MockWarningBanner } from './components/MockWarningBanner';
 import { logger } from './services/logger';
-import { API_BASE_URL } from './config/environment';
+import { apiGet } from './lib/api';
 import { 
   Zap, LogOut, Search, Bell, LayoutGrid, Calculator, PieChart, MessageSquare, Send, 
   Wifi, WifiOff, User, Settings
@@ -81,20 +81,11 @@ const AppLayout: React.FC = () => {
         
         // Session déjà active -> Vérifier le token
         // 🔥 CACHE BUSTING : Ajouter timestamp pour éviter 304 Not Modified
-        const response = await fetch(`/api/auth/me?t=${Date.now()}`, {
-          method: 'GET',
-          credentials: 'include',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        if (response.ok) {
+        try {
+          await apiGet(`/auth/me?t=${Date.now()}`);
           setIsAuthenticated(true);
           logger.info('User authenticated');
-        } else {
+        } catch (error) {
           setIsAuthenticated(false);
           logger.info('User not authenticated');
         }

@@ -1,4 +1,5 @@
 import { Role } from '../types';
+import { apiPost, apiGet } from '../lib/api';
 
 export interface LoginCredentials {
   email: string;
@@ -18,11 +19,6 @@ export interface AuthResponse {
   requiresTFA?: boolean;
   tfaMethod?: 'sms' | 'email' | 'app';
 }
-
-// Backend Railway en production, localhost en dev
-const API_BASE = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : 'http://localhost:3000/api';
 
 /**
  * Hash password using SHA-256 (client-side pre-hashing)
@@ -61,33 +57,12 @@ export const authService = {
     enforceHTTPS();
 
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: credentials.email.trim().toLowerCase(),
-          password: credentials.password, // HTTPS protège le transit, backend bcrypt valide
-          captchaToken: credentials.captchaToken,
-          tfaCode: credentials.tfaCode,
-        }),
-        credentials: 'include', // Send cookies (httpOnly token)
+      const data = await apiPost<AuthResponse>('/auth/login', {
+        email: credentials.email.trim().toLowerCase(),
+        password: credentials.password, // HTTPS protège le transit, backend bcrypt valide
+        captchaToken: credentials.captchaToken,
+        tfaCode: credentials.tfaCode,
       });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Erreur serveur' }));
-        
-        // Préserver contexte HTTP pour meilleure UX
-        const errorWithStatus: any = new Error(
-          error.message || 
-          (response.status === 429 ? 'Trop de tentatives. Réessayez plus tard.' : 'Identifiants invalides')
-        );
-        errorWithStatus.status = response.status;
-        throw errorWithStatus;
-      }
-
-      const data: AuthResponse = await response.json();
 
       // If 2FA is required, return early
       if (data.requiresTFA) {
@@ -95,9 +70,15 @@ export const authService = {
       }
 
       return data;
-    } catch (err) {
+    } catch (err: any) {
       // Re-throw for handling in component
-      throw err;
+      const errorWithStatus: any = new Error(
+        err.response?.data?.message || 
+        err.message || 
+        (err.response?.status === 429 ? 'Trop de tentatives. Réessayez plus tard.' : 'Identifiants invalides')
+      );
+      errorWithStatus.status = err.response?.status;
+      throw errorWithStatus;
     }
   },
 
@@ -105,37 +86,24 @@ export const authService = {
    * Verify 2FA code
    */
   async verify2FA(code: string, tempToken: string): Promise<AuthResponse> {
-    const response = await fetch(`${API_BASE}/auth/verify-2fa`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tempToken}`,
-      },
-      body: JSON.stringify({ code }),
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Code 2FA invalide');
+    try {
+      return await apiPost<AuthResponse>('/auth/verify-2fa', { code }, {
+        headers: { 'Authorization': `Bearer ${tempToken}` }
+      });
+    } catch (err: any) {
+      throw new Error(err.response?.data?.message || 'Code 2FA invalide');
     }
-
-    return response.json();
   },
 
   /**
    * Request 2FA code resend
    */
   async resend2FACode(tempToken: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/auth/resend-2fa`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${tempToken}`,
-      },
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
+    try {
+      await apiPost('/auth/resend-2fa', {}, {
+        headers: { 'Authorization': `Bearer ${tempToken}` }
+      });
+    } catch (err) {
       throw new Error('Erreur lors de l\'envoi du code');
     }
   },
@@ -144,10 +112,7 @@ export const authService = {
    * Logout and clear token
    */
   async logout(): Promise<void> {
-    await fetch(`${API_BASE}/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-    });
+    await apiPost('/auth/logout', {});
     // ✅ Cookie httpOnly supprimé côté serveur
   },
 
@@ -155,31 +120,14 @@ export const authService = {
    * Verify token validity
    */
   async verifyToken(): Promise<AuthResponse['user']> {
-    const response = await fetch(`${API_BASE}/auth/verify`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error('Token invalide');
-    }
-
-    return response.json();
+    return await apiGet<AuthResponse['user']>('/auth/verify');
   },
 
   /**
    * Request password reset
    */
   async requestPasswordReset(email: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/auth/password-reset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Erreur lors de la demande');
-    }
+    await apiPost('/auth/password-reset', { email });
   },
 
   /**

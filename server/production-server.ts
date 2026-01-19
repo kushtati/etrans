@@ -367,6 +367,35 @@ try {
   app.use(express.json());
   
   // ============================================
+  // HELMET - SÉCURITÉ HEADERS
+  // ============================================
+  log(`  Configuring helmet security headers...`);
+  const helmet = (await import('helmet')).default;
+  
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "https://cdn.tailwindcss.com"],
+        styleSrc: ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        frameSrc: ["'self'", "https://vercel.live"], // ✅ Autoriser Vercel feedback bar
+      },
+    },
+    hsts: {
+      maxAge: 31536000, // 1 an
+      includeSubDomains: true,
+      preload: true
+    },
+    frameguard: false, // Désactivé car on gère via CSP frameSrc
+    noSniff: true,
+    xssFilter: true
+  }));
+  log(`  ✅ Helmet security headers configured`);
+  
+  // ============================================
   // DEBUG ENDPOINTS (AVANT ROUTES POUR PRIORITÉ)
   // ============================================
   
