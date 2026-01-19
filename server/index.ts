@@ -27,9 +27,7 @@ import hpp from 'hpp';
 import { initAuditDB } from './services/auditService';
 import { initRedis, redis } from './config/redis';
 import { logger, logHttp, logSecurity, logError, logServerStart, logShutdown } from './config/logger';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from './config/prisma';
 
 // ============================================
 // CONFIGURATION
@@ -393,6 +391,10 @@ const gracefulShutdown = async (signal: string) => {
       });
       console.log('[SERVER] ✅ HTTP server closed');
     }
+
+    // Déconnecter Prisma proprement
+    await prisma.$disconnect();
+    console.log('[SERVER] ✅ Prisma disconnected');
 
     await redis.quit();
     console.log('[SERVER] ✅ Redis disconnected');
