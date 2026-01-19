@@ -26,6 +26,7 @@ model User {
 
   @@index([email])
   @@index([role])
+  @@index([lastLogin])
   @@map("users")
 }
 
@@ -73,6 +74,9 @@ model Shipment {
   @@index([status])
   @@index([createdById])
   @@index([createdAt])
+  @@index([status, createdAt]) // Liste filtré par statut + date
+  @@index([clientName]) // Recherche client
+  @@index([arrivalDate]) // Recherche par date d'arrivée
   @@map("shipments")
 }
 
@@ -106,6 +110,8 @@ model Expense {
   @@index([shipmentId])
   @@index([category])
   @@index([paid])
+  @@index([date]) // Rapports financiers par période
+  @@index([category, date]) // Rapports par catégorie + date
   @@map("expenses")
 }
 

@@ -249,6 +249,29 @@ const noCacheMiddleware = (req: Request, res: Response, next: NextFunction) => {
 // ⚠️ Routes montées dynamiquement dans initializeServer()
 // (code déplacé pour éviter les imports top-level)
 
+// ============================================
+// DEBUG ENDPOINTS (Development only)
+// ============================================
+
+if (NODE_ENV === 'development') {
+  // Test Trust Proxy - Vérifier détection IP réelle
+  app.get('/debug-env', (req: Request, res: Response) => {
+    res.json({
+      ip: req.ip,
+      ips: req.ips,
+      forwarded: req.headers['x-forwarded-for'],
+      realIp: req.headers['x-real-ip'],
+      environment: NODE_ENV,
+      trustProxy: app.get('trust proxy'),
+      headers: {
+        host: req.headers.host,
+        origin: req.headers.origin,
+        referer: req.headers.referer,
+      }
+    });
+  });
+}
+
 // Static files (frontend build)
 if (NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../dist')));
