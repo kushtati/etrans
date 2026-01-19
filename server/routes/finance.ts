@@ -23,7 +23,7 @@ const financeLimiter = rateLimit({
   message: { error: 'Limite finance atteinte. Réessayez dans 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
-  validate: false
+  validate: false // ✅ Désactive toutes validations (compatible proxy)
 });
 
 // 🔒 CONSTANTES DE SÉCURITÉ

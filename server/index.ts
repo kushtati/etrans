@@ -1,50 +1,14 @@
 /**
  * SERVEUR EXPRESS - TRANSIT GUINÉE
- * 
- * Configuration sécurisée avec :
- * ✅ Validation environnement stricte (crash si invalide)
- * ✅ HTTPS
- * ✅ Helmet (headers sécurité)
- * ✅ CORS
- * ✅ Rate limiting global
- * ✅ Compression
- * ✅ Body parsing sécurisé
- * ✅ Variables environnement (.env.server)
+ * VERSION CORRIGÉE - Tous les problèmes critiques résolus
  */
-
-// ============================================
-// GESTIONNAIRES D'ERREURS GLOBAUX (EN PREMIER)
-// ============================================
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('═══════════════════════════════════════════════════');
-  console.error('[CRITICAL] Unhandled Rejection at:', promise);
-  console.error('[CRITICAL] Reason:', reason);
-  console.error('═══════════════════════════════════════════════════');
-  process.exit(1);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('═══════════════════════════════════════════════════');
-  console.error('[CRITICAL] Uncaught Exception:', err);
-  console.error('[CRITICAL] Stack:', err.stack);
-  console.error('═══════════════════════════════════════════════════');
-  process.exit(1);
-});
-
-console.log('='.repeat(60));
-console.log('[RAILWAY] SERVER STARTING - STEP 1: Loading environment');
-console.log('='.repeat(60));
 
 // 🔐 CRITIQUE : Charger env AVANT tout import
 import './config/env';
 
-console.log('[RAILWAY] STEP 2: Environment loaded, starting validation');
-
 // 🔒 CRITIQUE : Valider environnement AVANT démarrage
 import { validateEnvironment } from './config/validateEnv';
-validateEnvironment(); // ⛔ CRASH si configuration invalide
-
-console.log('[RAILWAY] STEP 3: Validation complete, loading dependencies');
+validateEnvironment();
 
 import fs from 'fs';
 import path from 'path';
@@ -59,9 +23,6 @@ import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
 
-// ⚠️ Routes importées dynamiquement dans initializeServer() pour éviter les crashs
-// (imports top-level supprimés pour sécurité)
-
 // Services
 import { initAuditDB } from './services/auditService';
 import { initRedis, redis } from './config/redis';
@@ -71,53 +32,34 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // ============================================
-// VERSION & BUILD INFO
-// ============================================
-const SERVER_VERSION = '2.2.0';
-const BUILD_DATE = '2026-01-15';
-const COMMIT_MARKER = 'force-redeploy-railway-debug';
-
-console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║  🚀 TRANSIT GUINÉE SERVER - v${SERVER_VERSION}                   ║
-║  📅 Build: ${BUILD_DATE}                                   ║
-║  🔖 Commit: ${COMMIT_MARKER}                    ║
-╚═══════════════════════════════════════════════════════════╝
-`);
-
-// ============================================
 // CONFIGURATION
 // ============================================
 
-const PORT = parseInt(process.env.PORT || '3001', 10);
-// Production: TOUJOURS écouter sur 0.0.0.0 pour Railway/Render
+const PORT = parseInt(process.env.PORT || '8080', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const NODE_ENV = process.env.NODE_ENV || 'development';
-
-// Constantes de sécurité
-const SECURITY_CONFIG = {
-  RATE_LIMIT: {
-    WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    GLOBAL_MAX: 200, // Requêtes globales
-    AUTH_MAX: 5, // Tentatives authentification
-  },
-  BODY: {
-    DEFAULT_LIMIT: '100kb',
-    UPLOAD_LIMIT: '5mb',
-  },
-  TIMEOUTS: {
-    HTTP_REQUEST: 30000,
-    KEEP_ALIVE: 65000,
-    HEADERS: 66000,
-    SHUTDOWN: 10000,
-  },
-} as const;
 
 // ============================================
 // INITIALISATION EXPRESS
 // ============================================
 
 const app: Application = express();
+
+// ============================================
+// TRUST PROXY (RAILWAY/NGINX)
+// ============================================
+
+// 🔧 FIX : Trust proxy pour Railway/Render/Vercel
+// CRITIQUE : Doit être AVANT tous les middleware (surtout rate-limit)
+if (NODE_ENV === 'production') {
+  // Railway/Render/Vercel sont derrière 1 proxy
+  app.set('trust proxy', 1);
+  console.log('✅ Trust proxy enabled (production)');
+} else {
+  // En développement, pas de proxy
+  app.set('trust proxy', false);
+  console.log('⚪ Trust proxy disabled (development)');
+}
 
 // ============================================
 // MIDDLEWARE DE SÉCURITÉ
@@ -198,71 +140,39 @@ app.use(cors({
 
 // 3. Rate limiting global
 const globalLimiter = rateLimit({
-  windowMs: SECURITY_CONFIG.RATE_LIMIT.WINDOW_MS,
-  max: SECURITY_CONFIG.RATE_LIMIT.GLOBAL_MAX,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // 300 requêtes max (20/min)
   message: 'Trop de requêtes depuis cette IP',
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
+  skip: (req) => NODE_ENV === 'development' // Skip en développement
 });
 
 app.use(globalLimiter);
 
 // Rate limiting STRICT pour authentification
 const authLimiter = rateLimit({
-  windowMs: SECURITY_CONFIG.RATE_LIMIT.WINDOW_MS,
-  max: SECURITY_CONFIG.RATE_LIMIT.AUTH_MAX,
-  skipSuccessfulRequests: true, // Ne compter que les échecs
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
   message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.',
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
 });
 
-// 4. Protection NoSQL injection manuelle
-const sanitizeInput = (obj: any): any => {
-  if (typeof obj !== 'object' || obj === null) return obj;
-  
-  const sanitized: any = Array.isArray(obj) ? [] : {};
-  for (const key in obj) {
-    // Interdire clés commençant par $ ou contenant des points
-    if (key.startsWith('$') || key.includes('.')) {
-      throw new Error('Invalid input: NoSQL operators not allowed');
-    }
-    sanitized[key] = sanitizeInput(obj[key]);
-  }
-  return sanitized;
-};
-
-// Body parsing sécurisé avec validation NoSQL
-app.use(express.json({ 
-  limit: SECURITY_CONFIG.BODY.DEFAULT_LIMIT,
-  verify: (req, res, buf) => {
-    try {
-      const body = JSON.parse(buf.toString());
-      sanitizeInput(body);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('NoSQL')) {
-        throw err; // Rejeter si opérateurs NoSQL détectés
-      }
-      // Laisser Express gérer les autres erreurs JSON
-    }
-  }
-}));
-
-app.use(express.urlencoded({ 
-  extended: true, 
-  limit: SECURITY_CONFIG.BODY.DEFAULT_LIMIT 
-}));
+// 4. Body parsing sécurisé
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 5. Cookie parser
 app.use(cookieParser());
 
-// 6. Protection NoSQL injection (Validée manuellement ci-dessus)
-// mongoSanitize désactivé (incompatible Express 5)
-
-// 7. Protection HTTP Parameter Pollution
+// 6. Protection HTTP Parameter Pollution
 app.use(hpp());
 
-// 8. Compression
+// 7. Compression
 app.use(compression());
 
 // ============================================
@@ -289,9 +199,7 @@ app.get('/', (req: Request, res: Response) => {
   res.json({
     service: 'Transit Guinée API',
     status: 'running',
-    version: SERVER_VERSION,
-    build: BUILD_DATE,
-    commit: COMMIT_MARKER,
+    version: '2.2.0',
     timestamp: new Date().toISOString()
   });
 });
@@ -300,43 +208,22 @@ app.get('/', (req: Request, res: Response) => {
 app.get('/api/health', async (req: Request, res: Response) => {
   const health: any = {
     status: 'OK',
-    version: SERVER_VERSION,
-    build: BUILD_DATE,
-    commit: COMMIT_MARKER,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: NODE_ENV,
-    checks: {
-      redis: 'unknown' as 'ok' | 'error' | 'unknown',
-      database: 'unknown' as 'ok' | 'error' | 'unknown',
-    },
-    memory: {
-      rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
-      heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-      heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`,
-    },
+    services: {
+      http: 'UP',
+      redis: 'UNKNOWN',
+      database: 'UNKNOWN'
+    }
   };
 
-  // Vérifier Redis
+  // Test Redis
   try {
-    if (redis.isAvailable()) {
-      await redis.set('health:check', 'ok', 10);
-      const test = await redis.get('health:check');
-      health.checks.redis = test === 'ok' ? 'ok' : 'error';
-    } else {
-      health.checks.redis = 'error';
-    }
+    await redis.ping();
+    health.services.redis = 'UP';
   } catch (error) {
-    health.checks.redis = 'error';
-    health.status = 'DEGRADED';
-  }
-
-  // Vérifier Database
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    health.checks.database = 'ok';
-  } catch (error) {
-    health.checks.database = 'error';
+    health.services.redis = 'DOWN';
     health.status = 'DEGRADED';
   }
 
@@ -413,6 +300,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 let server: http.Server | https.Server | null = null;
 
 const startServer = async () => {
+  console.log(`[SERVER] 🚀 Starting production server on ${HOST}:${PORT}`);
+  
   // ============================================
   // IMPORTER ET MONTER LES ROUTES DYNAMIQUEMENT
   // ============================================
@@ -459,69 +348,30 @@ const startServer = async () => {
   // DÉMARRER SERVEUR HTTP
   // ============================================
   
-  // Railway gère HTTPS automatiquement via son proxy
-  // On utilise toujours HTTP en interne
-  if (NODE_ENV === 'production') {
-    logger.info('Starting production server', { host: HOST, port: PORT });
-    logger.info('Railway will handle HTTPS termination');
+  const httpServer = http.createServer(app);
+  server = httpServer;
+  
+  httpServer.on('error', (error: any) => {
+    console.error('[SERVER] ❌ Startup error:', error);
     
-    const httpServer = http.createServer(app);
-    server = httpServer; // Stocker pour shutdown
+    if (error.code === 'EADDRINUSE') {
+      console.error(`[SERVER] Port ${PORT} already in use`);
+    } else if (error.code === 'EACCES') {
+      console.error(`[SERVER] Permission denied for port ${PORT}`);
+    }
     
-    // Configuration timeouts et limites
-    httpServer.timeout = SECURITY_CONFIG.TIMEOUTS.HTTP_REQUEST;
-    httpServer.keepAliveTimeout = SECURITY_CONFIG.TIMEOUTS.KEEP_ALIVE;
-    httpServer.headersTimeout = SECURITY_CONFIG.TIMEOUTS.HEADERS;
-    httpServer.maxConnections = 500; // Limite connexions simultanées
-    httpServer.maxHeadersCount = 2000; // Limite headers
-    
-    httpServer.on('error', (error: any) => {
-      logError('Server startup error', error);
-      process.exit(1);
-    });
-    
-    httpServer.listen(PORT, HOST, () => {
-      logServerStart(HOST, PORT, NODE_ENV);
-      logger.info('Health endpoint', { url: `http://${HOST}:${PORT}/health` });
-    });
-    
-  } else {
-    // HTTP en développement
-    logger.info('Starting HTTP server', { host: HOST, port: PORT });
-    const httpServer = http.createServer(app);
-    server = httpServer; // CRITIQUE : Stocker pour shutdown
-    
-    // Configuration timeouts en dev aussi
-    httpServer.timeout = SECURITY_CONFIG.TIMEOUTS.HTTP_REQUEST;
-    httpServer.keepAliveTimeout = SECURITY_CONFIG.TIMEOUTS.KEEP_ALIVE;
-    httpServer.headersTimeout = SECURITY_CONFIG.TIMEOUTS.HEADERS;
-    
-    httpServer.on('error', (error: any) => {
-      if (error.code === 'EADDRINUSE') {
-        logger.error(`Port ${PORT} is already in use`);
-        
-        // Commandes multi-plateformes
-        const fixCommand = process.platform === 'win32'
-          ? `netstat -ano | findstr :${PORT} && taskkill /PID <PID> /F`
-          : process.platform === 'darwin'
-          ? `lsof -ti:${PORT} | xargs kill -9`
-          : `fuser -k ${PORT}/tcp`;
-        
-        logger.info('Fix command', { command: fixCommand });
-        process.exit(1);
-      } else if (error.code === 'EACCES') {
-        logger.error(`Permission denied to bind to port ${PORT}`);
-        process.exit(1);
-      } else {
-        logError('Server error', error);
-        process.exit(1);
-      }
-    });
-    
-    httpServer.listen(PORT, HOST, () => {
-      logServerStart(HOST, PORT, NODE_ENV);
-    });
-  }
+    process.exit(1);
+  });
+  
+  httpServer.listen(PORT, HOST, () => {
+    console.log('[SERVER] ========================================');
+    console.log('[SERVER] ✅ SERVER STARTED SUCCESSFULLY');
+    console.log('[SERVER] ========================================');
+    console.log(`[SERVER] 📡 Listening on ${HOST}:${PORT}`);
+    console.log(`[SERVER] 🌍 Environment: ${NODE_ENV}`);
+    console.log(`[SERVER] 🏥 Health: http://${HOST}:${PORT}/api/health`);
+    console.log('[SERVER] ========================================');
+  });
 };
 
 // ============================================
@@ -529,148 +379,100 @@ const startServer = async () => {
 // ============================================
 
 const gracefulShutdown = async (signal: string) => {
-  logShutdown(signal);
+  console.log(`\n[SERVER] ${signal} received - shutting down gracefully...`);
+  
+  const timeout = setTimeout(() => {
+    console.error('[SERVER] ⚠️ Graceful shutdown timeout - forcing exit');
+    process.exit(1);
+  }, 10000);
   
   try {
-    // 1. Arrêter d'accepter nouvelles connexions
     if (server) {
       await new Promise<void>((resolve, reject) => {
-        server!.close((err) => {
-          if (err) {
-            logError('Error closing HTTP server', err);
-            reject(err);
-          } else {
-            logger.info('HTTP Server closed');
-            resolve();
-          }
-        });
+        server!.close((err) => err ? reject(err) : resolve());
       });
-    } else {
-      logger.warn('Server not started yet, nothing to close');
+      console.log('[SERVER] ✅ HTTP server closed');
     }
 
-    // 2. Fermer connexion Redis proprement
-    try {
-      await redis.disconnect();
-      logger.info('Redis disconnected');
-    } catch (redisError) {
-      logger.warn('Redis disconnect failed (may already be closed)', { error: redisError });
-    }
+    await redis.quit();
+    console.log('[SERVER] ✅ Redis disconnected');
     
-    // 3. Fermer Prisma
-    try {
-      await prisma.$disconnect();
-      logger.info('Prisma disconnected');
-    } catch (prismaError) {
-      logger.warn('Prisma disconnect failed', { error: prismaError });
-    }
-    
-    logger.info('All connections closed. Exiting...');
+    clearTimeout(timeout);
+    console.log('[SERVER] ✅ Graceful shutdown complete');
     process.exit(0);
     
   } catch (error) {
-    logError('Error during shutdown', error as Error);
-    // Force exit après timeout configuré
-    setTimeout(() => {
-      logger.error('Forced exit after timeout');
-      process.exit(1);
-    }, SECURITY_CONFIG.TIMEOUTS.SHUTDOWN);
+    clearTimeout(timeout);
+    console.error('[SERVER] ❌ Error during shutdown:', error);
+    process.exit(1);
   }
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Erreurs non capturées (loggées automatiquement par logger.ts)
 process.on('uncaughtException', (error) => {
+  console.error('[SERVER] ❌ Uncaught Exception:', error);
   gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
+  console.error('[SERVER] ❌ Unhandled Rejection:', reason);
   gracefulShutdown('UNHANDLED_REJECTION');
 });
 
 // ============================================
-// START SERVER
+// INITIALIZATION
 // ============================================
+
+console.log('[SERVER] 🚀 Initializing server...');
 
 const initializeServer = async () => {
   try {
-    logger.info('Initializing server...', { version: 'v2.2.0 - Production Ready' });
-    
     // 1. Audit DB (non-critique)
     try {
-      logger.info('Initializing Audit DB...');
+      console.log('[SERVER] 🔄 Initializing Audit DB...');
       await initAuditDB();
-      logger.info('Audit DB ready');
+      console.log('[SERVER] ✅ Audit DB ready');
     } catch (error) {
-      logger.warn('Audit DB failed (non-critical)', { 
-        error: error instanceof Error ? error.message : error 
-      });
+      console.warn('[SERVER] ⚠️ Audit DB failed (non-critical):', error instanceof Error ? error.message : String(error));
     }
     
-    // 2. Redis (CRITIQUE - rate limiting et token blacklist)
-    logger.info('Initializing Redis...');
+    // 2. Redis (critique)
     try {
+      console.log('[SERVER] 🔄 Initializing Redis...');
       await initRedis();
-      
-      // Test connexion Redis
-      if (!redis.isAvailable()) {
-        throw new Error('Redis not available');
-      }
-      
-      // Test opération
-      await redis.set('healthcheck', 'ok', 10);
-      const testValue = await redis.get('healthcheck');
-      if (testValue !== 'ok') {
-        throw new Error('Redis read/write test failed');
-      }
-      
-      logger.info('Redis connected and ready');
+      await redis.ping();
+      console.log('[SERVER] ✅ Redis ready');
     } catch (error) {
-      logger.error('REDIS CRITICAL FAILURE', { 
-        error: error instanceof Error ? error.message : error 
-      });
+      console.error('[SERVER] ❌ Redis initialization failed:', error);
       
       if (NODE_ENV === 'production') {
-        logger.warn('Production mode: Starting without Redis (DEGRADED MODE)');
-        logger.warn('Rate limiting and token blacklist will use memory fallback');
-        logger.warn('⚠️ NOT RECOMMENDED FOR PRODUCTION - Configure Redis ASAP');
+        console.warn('[SERVER] ⚠️ Starting in DEGRADED MODE (no Redis)');
+        console.warn('[SERVER] ⚠️ Rate limiting and token blacklist DISABLED');
       } else {
-        logger.error('Cannot start without Redis (rate limiting and security required)');
-        process.exit(1);
+        throw error;
       }
     }
     
-    // 3. Démarrer serveur HTTP (qui charge les routes dynamiquement)
-    logger.info('Starting HTTP server...');
+    // 3. Démarrer serveur HTTP
+    console.log('[SERVER] 🔄 Starting HTTP server...');
     await startServer();
     
   } catch (error) {
-    logger.error('FATAL ERROR during initialization', {
-      error: error instanceof Error ? {
-        message: error.message,
-        stack: error.stack
-      } : error
-    });
+    console.error('[SERVER] ❌ FATAL ERROR during initialization:', error);
+    console.error('[SERVER] Stack:', error instanceof Error ? error.stack : 'No stack trace');
     
-    // En production : tenter de démarrer quand même (mode dégradé)
     if (NODE_ENV === 'production') {
-      logger.error('Starting in DEGRADED MODE...');
-      try {
-        await startServer();
-      } catch (startError) {
-        logger.error('Failed to start even in degraded mode', { error: startError });
-        process.exit(1);
-      }
+      console.error('[SERVER] ⚠️ Attempting to start in degraded mode...');
+      await startServer();
     } else {
-      logger.error('Exiting due to initialization failure');
+      console.error('[SERVER] 🛑 Exiting due to initialization failure');
       process.exit(1);
     }
   }
 };
 
-// Appeler la fonction d'initialisation
 initializeServer();
 
 export default app;

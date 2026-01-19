@@ -48,7 +48,7 @@ const analyzeLimiter = rateLimit({
   message: { error: 'Limite de 100 analyses/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
   legacyHeaders: false,
-  validate: false
+  validate: false // ✅ Désactive toutes validations (compatible proxy)
 });
 
 // 🚦 Rate Limiting : 50 requêtes/jour pour assistant (per-user)
@@ -59,7 +59,7 @@ const assistantLimiter = rateLimit({
   message: { error: 'Limite de 50 questions/jour atteinte. Réessayez demain.' },
   standardHeaders: true,
   legacyHeaders: false,
-  validate: false
+  validate: false // ✅ Désactive toutes validations (compatible proxy)
 });
 
 /**

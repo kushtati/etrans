@@ -1,5 +1,6 @@
 /**
  * BACKEND AUTHENTIFICATION - ROUTES SÉCURISÉES
+ * Commit 5a8963c - Code mort supprimé, Double Submit Cookie Pattern
  * 
  * Stack:
  * - Express.js
@@ -81,6 +82,7 @@ const authLimiter = rateLimit({
   message: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.',
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
 });
 
 // Rate limiter strict pour login (5 tentatives/15min par IP)
@@ -89,6 +91,7 @@ const loginLimiter = rateLimit({
   max: 5,
   skipSuccessfulRequests: true, // Ne compte que les échecs
   message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.',
+  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
 });
 
 router.use(authLimiter);
