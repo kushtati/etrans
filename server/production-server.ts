@@ -330,6 +330,18 @@ try {
   log(`  Creating Express app...`);
   const app = express();
   
+  // ============================================
+  // TRUST PROXY (CRITIQUE POUR RAILWAY)
+  // ============================================
+  log(`  Configuring trust proxy...`);
+  if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+    log(`  ✅ Trust proxy enabled (production): ${app.get('trust proxy')}`);
+  } else {
+    app.set('trust proxy', false);
+    log(`  ⚪ Trust proxy disabled (development)`);
+  }
+  
   log(`  Configuring CORS...`);
   const cors = (await import('cors')).default;
   
