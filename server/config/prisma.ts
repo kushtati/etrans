@@ -25,10 +25,6 @@ export const prisma = global.prisma || new PrismaClient({
       url: process.env.DATABASE_URL,
     },
   },
-  // ⚡ Configuration pool de connexions PostgreSQL
-  // https://www.prisma.io/docs/concepts/components/prisma-client/connection-pool
-  // Railway : limite de 20 connexions par défaut
-  connectionLimit: process.env.NODE_ENV === 'production' ? 10 : 5,
 });
 
 // En dev, conserver l'instance globale
