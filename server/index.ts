@@ -43,6 +43,9 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const app: Application = express();
 
+console.log(`[INIT] Node environment: ${NODE_ENV}`);
+console.log(`[INIT] Configuring trust proxy...`);
+
 // ============================================
 // TRUST PROXY (RAILWAY/NGINX)
 // ============================================
@@ -52,12 +55,16 @@ const app: Application = express();
 if (NODE_ENV === 'production') {
   // Railway/Render/Vercel sont derrière 1 proxy
   app.set('trust proxy', 1);
-  console.log('✅ Trust proxy enabled (production)');
+  console.log('✅ Trust proxy enabled (production mode)');
+  console.log(`   trust proxy value: ${app.get('trust proxy')}`);
 } else {
   // En développement, pas de proxy
   app.set('trust proxy', false);
-  console.log('⚪ Trust proxy disabled (development)');
+  console.log('⚪ Trust proxy disabled (development mode)');
 }
+
+console.log(`[INIT] Trust proxy configured successfully`);
+console.log(`[INIT] Configuring security middleware...`);
 
 // ============================================
 // MIDDLEWARE DE SÉCURITÉ
@@ -84,6 +91,8 @@ app.use(helmet({
   noSniff: true,
   xssFilter: true
 }));
+
+console.log(`[INIT] Security headers configured (helmet)`);
 
 // 2. CORS - Origines autorisées
 const allowedOrigins = [
@@ -136,6 +145,8 @@ app.use(cors({
   exposedHeaders: ['Set-Cookie'] // ✅ Exposer cookie au frontend
 }));
 
+console.log(`[INIT] CORS configured with credentials`);
+
 // 3. Rate limiting global
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -147,7 +158,11 @@ const globalLimiter = rateLimit({
   skip: (req) => NODE_ENV === 'development' // Skip en développement
 });
 
+console.log(`[INIT] Global rate limiter configured (300 req/15min)`);
+
 app.use(globalLimiter);
+
+console.log(`[INIT] Global rate limiter mounted`);
 
 // Rate limiting STRICT pour authentification
 const authLimiter = rateLimit({
