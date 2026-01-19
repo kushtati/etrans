@@ -23,7 +23,7 @@ cmds = [
 ]
 
 [start]
-cmd = "npx prisma migrate deploy && npm run start:prod"
+cmd = "npm run start:railway"
 
 [variables]
 NODE_ENV = "production"
