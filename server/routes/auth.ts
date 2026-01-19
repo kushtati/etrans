@@ -82,7 +82,10 @@ const authLimiter = rateLimit({
   message: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.',
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false, // ✅ Désactiver header Forwarded (RFC 7239)
+  },
 });
 
 // Rate limiter strict pour login (5 tentatives/15min par IP)
@@ -91,7 +94,10 @@ const loginLimiter = rateLimit({
   max: 5,
   skipSuccessfulRequests: true, // Ne compte que les échecs
   message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.',
-  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false, // ✅ Désactiver header Forwarded (RFC 7239)
+  },
 });
 
 router.use(authLimiter);

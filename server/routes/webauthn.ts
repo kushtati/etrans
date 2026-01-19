@@ -20,7 +20,10 @@ const webauthnLimiter = rateLimit({
   message: 'Trop de tentatives biométriques. Réessayez plus tard.',
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { xForwardedForHeader: false }, // ✅ Désactiver validation proxy stricte
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false, // ✅ Désactiver header Forwarded (RFC 7239)
+  },
 });
 
 // Whitelist domaines autorisés
